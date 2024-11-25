@@ -875,6 +875,13 @@ The top-level 'fit' node supports the following special properties:
         available at time of signing and must be located in single include
         directory.
 
+    fit,encrypt
+        Enable data encryption in FIT images via mkimage. If the property
+        is found, the keys path is detected among binman include
+        directories and passed to mkimage via  -k flag. All the keys
+        required for encrypting the FIT must be available at the time of
+        encrypting and must be located in a single include directory.
+
 Substitutions
 ~~~~~~~~~~~~~
 
