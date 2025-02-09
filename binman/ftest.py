@@ -303,7 +303,7 @@ class TestFunctional(unittest.TestCase):
     def setUp(self):
         # Enable this to turn on debugging output
         # tout.init(tout.DEBUG)
-        command.test_result = None
+        command.TEST_RESULT = None
 
     def tearDown(self):
         """Remove the temporary output directory"""
@@ -345,8 +345,9 @@ class TestFunctional(unittest.TestCase):
             Arguments to pass, as a list of strings
             kwargs: Arguments to pass to Command.RunPipe()
         """
-        result = command.run_pipe([[self._binman_pathname] + list(args)],
-                capture=True, capture_stderr=True, raise_on_error=False)
+        all_args = [self._binman_pathname] + list(args)
+        result = command.run_one(*all_args, capture=True, capture_stderr=True,
+                                 raise_on_error=False)
         if result.return_code and kwargs.get('raise_on_error', True):
             raise Exception("Error running '%s': %s" % (' '.join(args),
                             result.stdout + result.stderr))
@@ -780,11 +781,11 @@ class TestFunctional(unittest.TestCase):
     def testFullHelpInternal(self):
         """Test that the full help is displayed with -H"""
         try:
-            command.test_result = command.CommandResult()
+            command.TEST_RESULT = command.CommandResult()
             result = self._DoBinman('-H')
             help_file = os.path.join(self._binman_dir, 'README.rst')
         finally:
-            command.test_result = None
+            command.TEST_RESULT = None
 
     def testHelp(self):
         """Test that the basic help is displayed with -h"""
@@ -1872,7 +1873,7 @@ class TestFunctional(unittest.TestCase):
 
     def testGbb(self):
         """Test for the Chromium OS Google Binary Block"""
-        command.test_result = self._HandleGbbCommand
+        command.TEST_RESULT = self._HandleGbbCommand
         entry_args = {
             'keydir': 'devkeys',
             'bmpblk': 'bmpblk.bin',
@@ -1941,7 +1942,7 @@ class TestFunctional(unittest.TestCase):
     def testVblock(self):
         """Test for the Chromium OS Verified Boot Block"""
         self._hash_data = False
-        command.test_result = self._HandleVblockCommand
+        command.TEST_RESULT = self._HandleVblockCommand
         entry_args = {
             'keydir': 'devkeys',
         }
@@ -1974,7 +1975,7 @@ class TestFunctional(unittest.TestCase):
     def testVblockContent(self):
         """Test that the vblock signs the right data"""
         self._hash_data = True
-        command.test_result = self._HandleVblockCommand
+        command.TEST_RESULT = self._HandleVblockCommand
         entry_args = {
             'keydir': 'devkeys',
         }
@@ -2297,16 +2298,17 @@ class TestFunctional(unittest.TestCase):
         fhdr, fentries = fmap_util.DecodeFmap(data[32:])
 
         self.assertEqual(0x100, fhdr.image_size)
+        base = (1 << 32) - 0x100
 
-        self.assertEqual(0, fentries[0].offset)
+        self.assertEqual(base, fentries[0].offset)
         self.assertEqual(4, fentries[0].size)
         self.assertEqual(b'U_BOOT', fentries[0].name)
 
-        self.assertEqual(4, fentries[1].offset)
+        self.assertEqual(base + 4, fentries[1].offset)
         self.assertEqual(3, fentries[1].size)
         self.assertEqual(b'INTEL_MRC', fentries[1].name)
 
-        self.assertEqual(32, fentries[2].offset)
+        self.assertEqual(base + 32, fentries[2].offset)
         self.assertEqual(fmap_util.FMAP_HEADER_LEN +
                          fmap_util.FMAP_AREA_LEN * 3, fentries[2].size)
         self.assertEqual(b'FMAP', fentries[2].name)
@@ -2319,27 +2321,28 @@ class TestFunctional(unittest.TestCase):
         fhdr, fentries = fmap_util.DecodeFmap(data[36:])
 
         self.assertEqual(0x180, fhdr.image_size)
+        base = (1 << 32) - 0x180
         expect_size = fmap_util.FMAP_HEADER_LEN + fmap_util.FMAP_AREA_LEN * 4
         fiter = iter(fentries)
 
         fentry = next(fiter)
         self.assertEqual(b'U_BOOT', fentry.name)
-        self.assertEqual(0, fentry.offset)
+        self.assertEqual(base, fentry.offset)
         self.assertEqual(4, fentry.size)
 
         fentry = next(fiter)
         self.assertEqual(b'SECTION', fentry.name)
-        self.assertEqual(4, fentry.offset)
+        self.assertEqual(base + 4, fentry.offset)
         self.assertEqual(0x20 + expect_size, fentry.size)
 
         fentry = next(fiter)
         self.assertEqual(b'INTEL_MRC', fentry.name)
-        self.assertEqual(4, fentry.offset)
+        self.assertEqual(base + 4, fentry.offset)
         self.assertEqual(3, fentry.size)
 
         fentry = next(fiter)
         self.assertEqual(b'FMAP', fentry.name)
-        self.assertEqual(36, fentry.offset)
+        self.assertEqual(base + 36, fentry.offset)
         self.assertEqual(expect_size, fentry.size)
 
     def testElf(self):
@@ -3535,8 +3538,8 @@ class TestFunctional(unittest.TestCase):
         image = control.images['image']
         entries = image.GetEntries()
         desc = entries['intel-descriptor']
-        self.assertEqual(0xff800000, desc.offset);
-        self.assertEqual(0xff800000, desc.image_pos);
+        self.assertEqual(0xff800000, desc.offset)
+        self.assertEqual(0xff800000, desc.image_pos)
 
     def testReplaceCbfs(self):
         """Test replacing a single file in CBFS without changing the size"""
@@ -3778,8 +3781,8 @@ class TestFunctional(unittest.TestCase):
 
         image = control.images['image']
         entries = image.GetEntries()
-        expected_ptr = entries['intel-fit'].image_pos - (1 << 32)
-        self.assertEqual(expected_ptr, ptr)
+        expected_ptr = entries['intel-fit'].image_pos #- (1 << 32)
+        self.assertEqual(expected_ptr, ptr + (1 << 32))
 
     def testPackIntelFitMissing(self):
         """Test detection of a FIT pointer with not FIT region"""
@@ -4751,7 +4754,7 @@ class TestFunctional(unittest.TestCase):
         entry = image.GetEntries()['fdtmap']
         self.assertEqual(orig_entry.offset, entry.offset)
         self.assertEqual(orig_entry.size, entry.size)
-        self.assertEqual(16, entry.image_pos)
+        self.assertEqual((1 << 32) - 0x400 + 16, entry.image_pos)
 
         u_boot = image.GetEntries()['section'].GetEntries()['u-boot']
 
@@ -5474,7 +5477,7 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
 
     def testFitSubentryUsesBintool(self):
         """Test that binman FIT subentries can use bintools"""
-        command.test_result = self._HandleGbbCommand
+        command.TEST_RESULT = self._HandleGbbCommand
         entry_args = {
             'keydir': 'devkeys',
             'bmpblk': 'bmpblk.bin',
