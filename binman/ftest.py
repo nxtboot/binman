@@ -270,7 +270,7 @@ class TestFunctional(unittest.TestCase):
 
     @classmethod
     def setup_test_args(cls, preserve_indir=False, preserve_outdirs=False,
-                        toolpath=None, verbosity=None):
+                        toolpath=None, verbosity=None, no_capture=False):
         """Accept arguments controlling test execution
 
         Args:
@@ -285,6 +285,7 @@ class TestFunctional(unittest.TestCase):
         cls.preserve_outdirs = preserve_outdirs
         cls.toolpath = toolpath
         cls.verbosity = verbosity
+        cls.no_capture = no_capture
 
     def _CheckBintool(self, bintool):
         if not bintool.is_present():
