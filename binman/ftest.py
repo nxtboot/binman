@@ -88,6 +88,7 @@ REFCODE_DATA          = b'refcode'
 FSP_M_DATA            = b'fsp_m'
 FSP_S_DATA            = b'fsp_s'
 FSP_T_DATA            = b'fsp_t'
+ATF_BL1_DATA         = b'bl1'
 ATF_BL31_DATA         = b'bl31'
 TEE_OS_DATA           = b'this is some tee OS data'
 TI_DM_DATA            = b'tidmtidm'
@@ -226,6 +227,7 @@ class TestFunctional(unittest.TestCase):
 
         TestFunctional._MakeInputFile('compress', COMPRESS_DATA)
         TestFunctional._MakeInputFile('compress_big', COMPRESS_DATA_BIG)
+        TestFunctional._MakeInputFile('bl1.bin', ATF_BL1_DATA)
         TestFunctional._MakeInputFile('bl31.bin', ATF_BL31_DATA)
         TestFunctional._MakeInputFile('tee-pager.bin', TEE_OS_DATA)
         TestFunctional._MakeInputFile('dm.bin', TI_DM_DATA)
@@ -5575,6 +5577,11 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
         data = self._DoReadFile('225_ti_dm.dts')
         self.assertEqual(TI_DM_DATA, data[:len(TI_DM_DATA)])
 
+    def testPackBl1(self):
+        """test if an image with a bl1 binary can be created"""
+        data = self._DoReadFile('347_bl1.dts')
+        self.assertEqual(ATF_BL1_DATA, data[:len(ATF_BL1_DATA)])
+
     def testFitFdtOper(self):
         """Check handling of a specified FIT operation"""
         entry_args = {
@@ -7283,6 +7290,13 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
                          tools.to_bytes(''.join(node.props['key'].value)))
         self.assertNotIn('key-source', node.props)
 
+    def testKeyNameHintIsPathSplPubkeyDtb(self):
+        """Test that binman errors out on key-name-hint being a path"""
+        with self.assertRaises(ValueError) as e:
+            self._DoReadFile('348_key_name_hint_dir_spl_pubkey_dtb.dts')
+        self.assertIn(
+            'Node \'/binman/u-boot-spl-pubkey-dtb\': \'keys/key\' is a path not a filename',
+            str(e.exception))
 
     def testSplPubkeyDtb(self):
         """Test u_boot_spl_pubkey_dtb etype"""
@@ -7956,6 +7970,24 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
             entry_args=entry_args,
             extra_indirs=[test_subdir])[0]
 
+    def testKeyNameHintIsPathSimpleFit(self):
+        """Test that binman errors out on key-name-hint being a path"""
+        if not elf.ELF_TOOLS:
+            self.skipTest('Python elftools not available')
+        entry_args = {
+            'of-list': 'test-fdt1',
+            'default-dt': 'test-fdt1',
+            'atf-bl31-path': 'bl31.elf',
+        }
+        test_subdir = os.path.join(self._indir, TEST_FDT_SUBDIR)
+        with self.assertRaises(ValueError) as e:
+            self._DoReadFileDtb(
+                    '347_key_name_hint_dir_fit_signature.dts',
+                    entry_args=entry_args,
+                    extra_indirs=[test_subdir])
+        self.assertIn(
+            'Node \'/binman/fit\': \'keys/rsa2048\' is a path not a filename',
+            str(e.exception))
 
     def testSimpleFitEncryptedData(self):
         """Test an image with a FIT containing data to be encrypted"""
@@ -8012,6 +8044,30 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
         TestFunctional._MakeInputFile('my-blob2.bin', b'other')
         self._DoTestFile('346_remove_template.dts',
                          force_missing_bintools='openssl',)
+
+    def testBootphPropagation(self):
+        """Test that bootph-* properties are propagated correctly to supernodes"""
+        _, _, _, out_dtb_fname = self._DoReadFileDtb(
+                '347_bootph_prop.dts', use_real_dtb=True, update_dtb=True)
+        dtb = fdt.Fdt(out_dtb_fname)
+        dtb.Scan()
+        root = dtb.GetRoot()
+        parent_node = root.FindNode('dummy-parent')
+        subnode1 = parent_node.FindNode('subnode-1')
+        subnode2 = subnode1.FindNode('subnode-2')
+        subnode3 = subnode1.FindNode('subnode-3')
+        subnode4 = subnode3.FindNode('subnode-4')
+
+        self.assertIn('bootph-some-ram', subnode1.props,
+                      "Child node is missing 'bootph-some-ram' property")
+        self.assertIn('bootph-all', subnode1.props,
+                      "Child node is missing 'bootph-all' property")
+        self.assertIn('bootph-some-ram', parent_node.props,
+                      "Parent node is missing 'bootph-some-ram' property")
+        self.assertIn('bootph-all', parent_node.props,
+                      "Parent node is missing 'bootph-all' property")
+        self.assertEqual(len(subnode4.props), 0,
+                        "subnode shouldn't have any properties")
 
 if __name__ == "__main__":
     unittest.main()
