@@ -751,7 +751,6 @@ def ProcessImage(image, update_fdt, write_map, get_contents=True,
         image.SetAllowMissing(allow_missing)
         image.SetAllowFakeBlob(allow_fake_blobs)
         image.GetEntryContents()
-        image.drop_absent()
     image.GetEntryOffsets()
 
     # We need to pack the entries to figure out where everything
@@ -790,11 +789,11 @@ def ProcessImage(image, update_fdt, write_map, get_contents=True,
         image.Raise('Entries changed size after packing (tried %s passes)' %
                     passes)
 
+    has_problems = CheckForProblems(image)
+
     image.BuildImage()
     if write_map:
         image.WriteMap()
-
-    has_problems = CheckForProblems(image)
 
     image.WriteAlternates()
 
