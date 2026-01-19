@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: GPL-2.0+
+# Copyright 2026 Canonical Ltd
+# Written by Simon Glass <simon.glass@canonical.com>
+#
+# Blob stores configuration for binman
+#
+# This file defines:
+# - stores: Sources from which blobs can be fetched
+# - blobs: Known firmware blob types and their fetch configurations
+
+stores:
+  # ARM Trusted Firmware releases on GitHub
+  arm-tf-github:
+    type: git-release
+    repo: https://github.com/ARM-software/arm-trusted-firmware
+    priority: 50
+    desc: ARM Trusted Firmware GitHub releases
+
+  # OpenSBI releases on GitHub
+  opensbi-github:
+    type: git-release
+    repo: https://github.com/riscv-software-src/opensbi
+    priority: 50
+    desc: OpenSBI GitHub releases
+
+  # Build from source store (delegates to blob handler's build() method)
+  source-build:
+    type: build
+    priority: 10
+    desc: Build from source (highest priority)
+
+blobs:
+  # ARM Trusted Firmware-A (TF-A / ATF)
+  arm,trusted-firmware-a:
+    desc: ARM Trusted Firmware-A (BL31)
+    handler: atf
+    stores:
+      - store: source-build
+      - store: arm-tf-github
+        pattern: releases/download/lts-v{version}/arm-trusted-firmware-{version}.tar.gz
+
+  # Test blob for unit testing
+  test,testing:
+    desc: Test blob for unit testing
+    handler: _testing
+    stores: []

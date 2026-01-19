@@ -9043,5 +9043,129 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
         self.assertEqual(len(subnode4.props), 0,
                         "subnode shouldn't have any properties")
 
+    def testBlobList(self):
+        """Test listing blob types"""
+        args = ['blob', '--list']
+        with terminal.capture() as (stdout, _):
+            self._DoBinman(*args)
+        out = stdout.getvalue()
+        self.assertIn('Compatible', out)
+        self.assertIn('Description', out)
+
+    def testBlobListStores(self):
+        """Test listing blob stores"""
+        args = ['blob', '--list-stores']
+        with terminal.capture() as (stdout, _):
+            self._DoBinman(*args)
+        out = stdout.getvalue()
+        self.assertIn('Name', out)
+        self.assertIn('Type', out)
+        self.assertIn('Pri', out)
+
+    def testBlobInfo(self):
+        """Test showing blob info"""
+        args = ['blob', '--info', 'arm,trusted-firmware-a']
+        with terminal.capture() as (stdout, _):
+            self._DoBinman(*args)
+        out = stdout.getvalue()
+        self.assertIn('Compatible:', out)
+        self.assertIn('arm,trusted-firmware-a', out)
+
+    def testBlobInvalidArgs(self):
+        """Test blob command with no arguments"""
+        args = ['blob']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn("Invalid arguments to 'blob' subcommand",
+                      str(e.exception))
+
+    def testBlobFetchMissingVersion(self):
+        """Test blob fetch without --version"""
+        args = ['blob', '--fetch', 'arm,trusted-firmware-a']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --version for fetch', str(e.exception))
+
+    def testBlobFetchMissingArch(self):
+        """Test blob fetch without --arch"""
+        args = ['blob', '--fetch', 'arm,trusted-firmware-a', '--version', '2.9']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --arch for fetch', str(e.exception))
+
+    def testBlobFetchMissingPlat(self):
+        """Test blob fetch without --plat"""
+        args = ['blob', '--fetch', 'arm,trusted-firmware-a',
+                '--version', '2.9', '--arch', 'aarch64']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --plat for fetch', str(e.exception))
+
+    def testBlobAddMissingFile(self):
+        """Test blob add without --file"""
+        args = ['blob', '--add', 'test,blob']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --file for add', str(e.exception))
+
+    def testBlobAddMissingVersion(self):
+        """Test blob add without --version"""
+        args = ['blob', '--add', 'test,blob', '--file', '/tmp/test.bin']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --version for add', str(e.exception))
+
+    def testBlobAddMissingArch(self):
+        """Test blob add without --arch"""
+        args = ['blob', '--add', 'test,blob', '--file', '/tmp/test.bin',
+                '--version', '1.0']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --arch for add', str(e.exception))
+
+    def testBlobAddMissingPlat(self):
+        """Test blob add without --plat"""
+        args = ['blob', '--add', 'test,blob', '--file', '/tmp/test.bin',
+                '--version', '1.0', '--arch', 'aarch64']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --plat for add', str(e.exception))
+
+    def testBlobFetch(self):
+        """Test blob fetch command"""
+        def handle_command(pipe_list):
+            cmd = pipe_list[0]
+            if cmd[0] == 'git':
+                tmpdir = cmd[-1]
+                os.makedirs(tmpdir, exist_ok=True)
+            elif cmd[0] == 'make':
+                tmpdir = cmd[2]
+                output_dir = os.path.join(tmpdir, 'build', 'sun50i_a64',
+                                          'release')
+                os.makedirs(output_dir, exist_ok=True)
+                tools.write_file(os.path.join(output_dir, 'bl31.bin'), b'bl31')
+            return command.CommandResult()
+
+        args = ['blob', '--fetch', 'arm,trusted-firmware-a',
+                '--version', '2.9', '--arch', 'aarch64', '--plat', 'sun50i_a64']
+        try:
+            command.TEST_RESULT = handle_command
+            with terminal.capture() as (stdout, _):
+                self._DoBinman(*args)
+            self.assertIn('Fetch:', stdout.getvalue())
+        finally:
+            command.TEST_RESULT = None
+
+    def testBlobAdd(self):
+        """Test blob add command"""
+        test_file = os.path.join(self._indir, 'blob_add_test.bin')
+        tools.write_file(test_file, b'test blob data')
+
+        args = ['blob', '--add', 'test,added', '--file', test_file,
+                '--version', '1.0', '--arch', 'aarch64', '--plat', 'generic']
+        with terminal.capture() as (stdout, _):
+            self._DoBinman(*args)
+        self.assertIn('Added', stdout.getvalue())
+
 if __name__ == "__main__":
     unittest.main()
