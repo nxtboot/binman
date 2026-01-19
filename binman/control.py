@@ -848,7 +848,7 @@ def Binman(args):
     tools.set_tool_paths(tool_paths or None)
     bintool.Bintool.set_tool_dir(args.tooldir)
 
-    if args.cmd in ['ls', 'extract', 'replace', 'tool', 'sign']:
+    if args.cmd in ['ls', 'extract', 'replace', 'tool', 'sign', 'blob']:
         try:
             tout.init(args.verbosity + 1)
             if args.cmd == 'replace':
@@ -881,6 +881,46 @@ def Binman(args):
                                                 args.bintools)
                 else:
                     raise ValueError("Invalid arguments to 'tool' subcommand")
+
+            if args.cmd == 'blob':
+                from binman import blob
+                blob.Blob.set_blob_dir(args.tooldir)
+                if args.list:
+                    blob.Blob.list_all()
+                elif args.list_stores:
+                    blob.Blob.list_stores()
+                elif args.info:
+                    blob.Blob.show_info(args.info)
+                elif args.fetch:
+                    if not args.version:
+                        raise ValueError(
+                            "Please specify --version for fetch")
+                    if not args.arch:
+                        raise ValueError(
+                            "Please specify --arch for fetch")
+                    if not args.plat:
+                        raise ValueError(
+                            "Please specify --plat for fetch")
+                    blob.Blob.fetch_blobs([args.fetch], args.version,
+                                          args.arch, args.plat,
+                                          args.source_only, args.no_source)
+                elif args.add:
+                    if not args.file:
+                        raise ValueError(
+                            "Please specify --file for add")
+                    if not args.version:
+                        raise ValueError(
+                            "Please specify --version for add")
+                    if not args.arch:
+                        raise ValueError(
+                            "Please specify --arch for add")
+                    if not args.plat:
+                        raise ValueError(
+                            "Please specify --plat for add")
+                    blob.Blob.add_blob(args.add, args.file, args.version,
+                                       args.arch, args.plat)
+                else:
+                    raise ValueError("Invalid arguments to 'blob' subcommand")
         except:
             raise
         finally:
