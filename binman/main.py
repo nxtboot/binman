@@ -10,38 +10,16 @@
 """See README for more information"""
 
 import os
-import site
 import sys
 import traceback
 
-# Get the absolute path to this file at run-time
+# Allow running directly from a checkout ('python3 binman/main.py'), so that
+# 'from binman import ...' and the sibling packages resolve
+# pylint: disable=C0413
 our_path = os.path.dirname(os.path.realpath(__file__))
-our1_path = os.path.dirname(our_path)
-our2_path = os.path.dirname(our1_path)
-
-# Extract $(srctree) from Kbuild environment, or use relative paths below
-srctree = os.environ.get('srctree', our2_path)
-
-#
-# Do not pollute source tree with cache files:
-# https://stackoverflow.com/a/60024195/2511795
-# https://bugs.python.org/issue33499
-#
-sys.pycache_prefix = os.path.relpath(our_path, srctree)
-
-# Bring in the patman and dtoc libraries (but don't override the first path
-# in PYTHONPATH)
-sys.path.insert(2, our1_path)
+sys.path.insert(2, os.path.dirname(our_path))
 
 from binman import bintool
-from u_boot_pylib import test_util
-
-# Bring in the libfdt module
-sys.path.insert(2, 'scripts/dtc/pylibfdt')
-sys.path.insert(2, os.path.join(srctree, 'scripts/dtc/pylibfdt'))
-sys.path.insert(2, os.path.join(srctree, 'build-sandbox/scripts/dtc/pylibfdt'))
-sys.path.insert(2, os.path.join(srctree, 'build-sandbox_spl/scripts/dtc/pylibfdt'))
-
 from binman import cmdline
 from binman import control
 from u_boot_pylib import test_util
@@ -95,9 +73,8 @@ def RunTestCoverage(toolpath, build_dir, args):
         for path in toolpath:
             extra_args += ' --toolpath %s' % path
 
-    test_util.run_test_coverage('tools/binman/binman', None,
-            ['*test*', '*main.py', 'tools/patman/*', 'tools/dtoc/*',
-             'tools/u_boot_pylib/*'],
+    test_util.run_test_coverage(os.path.join(our_path, 'main.py'), None,
+            ['*test*', '*main.py', '*/dtoc/*', '*/u_boot_pylib/*'],
             build_dir, all_set, extra_args or None, args=args)
 
 def RunBinman(args):

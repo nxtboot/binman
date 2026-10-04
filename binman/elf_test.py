@@ -7,7 +7,6 @@
 import os
 import shutil
 import struct
-import sys
 import tempfile
 import unittest
 
@@ -18,7 +17,7 @@ from u_boot_pylib import test_util
 from u_boot_pylib import tools
 from u_boot_pylib import tout
 
-binman_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
+binman_dir = os.path.dirname(os.path.realpath(__file__))
 
 
 class FakeEntry:

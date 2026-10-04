@@ -832,7 +832,7 @@ def Binman(args):
     global state
 
     if args.full_help:
-        with importlib_resources.path('binman', 'README.rst') as readme:
+        with importlib_resources.path('binman', 'binman.rst') as readme:
             tools.print_full_help(str(readme))
         return 0
 

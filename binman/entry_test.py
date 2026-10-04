@@ -7,7 +7,6 @@
 import collections
 import importlib
 import os
-import sys
 import unittest
 
 from binman import entry
@@ -24,7 +23,7 @@ class TestEntry(unittest.TestCase):
         tools.finalise_output_dir()
 
     def GetNode(self):
-        binman_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
+        binman_dir = os.path.dirname(os.path.realpath(__file__))
         fname = fdt_util.EnsureCompiled(
             os.path.join(binman_dir,('test/pack/simple.dts')))
         dtb = fdt.FdtScan(fname)

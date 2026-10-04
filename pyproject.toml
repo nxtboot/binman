@@ -25,5 +25,8 @@ classifiers = [
 [project.scripts]
 binman = "binman.main:start_binman"
 
+[tool.setuptools]
+packages = ["binman", "binman.btool", "binman.etype"]
+
 [tool.setuptools.package-data]
-binman = ["*.rst"]
+binman = ["*.rst", "missing-blob-help"]

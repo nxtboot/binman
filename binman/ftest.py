@@ -16,7 +16,6 @@ import os
 import re
 import shutil
 import struct
-import sys
 import tempfile
 import unittest
 import unittest.mock
@@ -160,8 +159,8 @@ class TestFunctional(unittest.TestCase):
         from binman import entry
 
         # Handle the case where argv[0] is 'python'
-        cls._binman_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
-        cls._binman_pathname = os.path.join(cls._binman_dir, 'binman')
+        cls._binman_dir = os.path.dirname(os.path.realpath(__file__))
+        cls._binman_pathname = os.path.join(cls._binman_dir, 'main.py')
 
         # Create a temporary directory for input files
         cls._indir = tempfile.mkdtemp(prefix='binmant.')
@@ -793,7 +792,7 @@ class TestFunctional(unittest.TestCase):
     def testFullHelp(self):
         """Test that the full help is displayed with -H"""
         result = self._RunBinman('-H')
-        help_file = os.path.join(self._binman_dir, 'README.rst')
+        help_file = os.path.join(self._binman_dir, 'binman.rst')
         # Remove possible extraneous strings
         extra = '::::::::::::::\n' + help_file + '\n::::::::::::::\n'
         gothelp = result.stdout.replace(extra, '')
@@ -806,7 +805,7 @@ class TestFunctional(unittest.TestCase):
         try:
             command.TEST_RESULT = command.CommandResult()
             result = self._DoBinman('-H')
-            help_file = os.path.join(self._binman_dir, 'README.rst')
+            help_file = os.path.join(self._binman_dir, 'binman.rst')
         finally:
             command.TEST_RESULT = None
 

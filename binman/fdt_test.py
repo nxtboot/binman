@@ -5,7 +5,6 @@
 # Test for the fdt modules
 
 import os
-import sys
 import tempfile
 import unittest
 
@@ -17,7 +16,7 @@ from u_boot_pylib import tools
 class TestFdt(unittest.TestCase):
     @classmethod
     def setUpClass(self):
-        self._binman_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
+        self._binman_dir = os.path.dirname(os.path.realpath(__file__))
         self._indir = tempfile.mkdtemp(prefix='binmant.')
         tools.prepare_output_dir(self._indir, True)
 
