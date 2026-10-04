@@ -8,30 +8,46 @@ version = "0.0.7"
 authors = [
   { name="Simon Glass", email="sjg@chromium.org" },
 ]
-dependencies = ["pylibfdt"]
-description = "Binman firmware-packaging tool"
+description = "Package firmware binaries into images described by a devicetree"
 readme = "README.rst"
-requires-python = ">=3.7"
+requires-python = ">=3.9"
+license = "GPL-2.0-or-later"
+license-files = ["LICENSE"]
+keywords = ["firmware", "image", "devicetree", "u-boot", "fit", "cbfs"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
     "Operating System :: OS Independent",
+    "Environment :: Console",
+    "Topic :: Software Development :: Embedded Systems",
+    "Topic :: System :: Boot",
+    "Intended Audience :: Developers",
+]
+dependencies = [
+    "pylibfdt >= 1.7",
+    "pyelftools",
+    "pycryptodomex",
+    "jsonschema",
+    "PyYAML",
+    "yamllint",
 ]
 
 [project.optional-dependencies]
-# Running the test suite (parallel test execution)
-test = ["concurrencytest"]
+# Running the test suite (parallel test execution and coverage)
+test = ["concurrencytest", "coverage"]
 
 [project.urls]
-"Homepage" = "https://docs.u-boot-project.org/en/latest/develop/package/index.html"
-"Bug Tracker" = "https://git.u-boot-project.org/groups/u-boot/-/issues"
+Homepage = "https://github.com/nxtboot/binman"
+Documentation = "https://binman.readthedocs.io/"
+Repository = "https://github.com/nxtboot/binman"
+"Bug Tracker" = "https://github.com/nxtboot/binman/issues"
 
 [project.scripts]
 binman = "binman.main:start_binman"
 
-[tool.setuptools]
-packages = ["binman", "binman.btool", "binman.etype", "dtoc",
-            "u_boot_pylib"]
+[tool.setuptools.packages.find]
+# binman.test and its subdirs hold the test data, found as namespace packages
+include = ["binman*", "dtoc", "u_boot_pylib"]
 
 [tool.setuptools.package-data]
 binman = ["*.rst", "missing-blob-help"]
+"binman.test" = ["**/*"]
