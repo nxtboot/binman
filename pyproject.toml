@@ -8,7 +8,7 @@ version = "0.0.7"
 authors = [
   { name="Simon Glass", email="sjg@chromium.org" },
 ]
-dependencies = ["pylibfdt", "u_boot_pylib >= 0.0.6", "dtoc >= 0.0.6"]
+dependencies = ["pylibfdt", "dtoc >= 0.0.6"]
 description = "Binman firmware-packaging tool"
 readme = "README.rst"
 requires-python = ">=3.7"
@@ -18,6 +18,10 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
+[project.optional-dependencies]
+# Running the test suite (parallel test execution)
+test = ["concurrencytest"]
+
 [project.urls]
 "Homepage" = "https://docs.u-boot-project.org/en/latest/develop/package/index.html"
 "Bug Tracker" = "https://git.u-boot-project.org/groups/u-boot/-/issues"
@@ -26,7 +30,7 @@ classifiers = [
 binman = "binman.main:start_binman"
 
 [tool.setuptools]
-packages = ["binman", "binman.btool", "binman.etype"]
+packages = ["binman", "binman.btool", "binman.etype", "u_boot_pylib"]
 
 [tool.setuptools.package-data]
 binman = ["*.rst", "missing-blob-help"]
