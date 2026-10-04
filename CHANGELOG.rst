@@ -8,6 +8,9 @@ the project follows `Semantic Versioning <https://semver.org/>`_.
 Unreleased
 ----------
 
+0.1.0 - 2026-10-04
+------------------
+
 Changed
 ~~~~~~~
 - Binman is now developed in its own repository at
@@ -20,6 +23,12 @@ Changed
   separately.
 - ``binman -V`` shows the version of the installed package.
 - Documentation is now published at https://binman.readthedocs.io/.
+
+Fixed
+~~~~~
+- ``binman tool -f fiptool`` finds the tool where current TF-A builds it,
+  in ``build/fvp/release/tools/fiptool/``, instead of reporting that it was
+  not produced.
 
 Earlier releases
 ----------------
