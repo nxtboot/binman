@@ -14,3 +14,4 @@ The project is hosted at https://github.com/nxtboot/binman
 
    binman
    binman_tests
+   changelog
