@@ -7,6 +7,7 @@
 
 from collections import defaultdict
 import hashlib
+from importlib import metadata
 import re
 import time
 import threading
@@ -527,12 +528,17 @@ def GetVersion(path=OUR_PATH):
     Args:
         path: Path to 'version' file
 
+    A local 'version' file takes precedence, e.g. so that a distributor can
+    record its own version. Failing that, the version of the installed package
+    is used.
+
     Returns:
-        str: String version, e.g. 'v2021.10'
+        str: String version, e.g. 'v2021.10' or '0.1.0'
     """
     version_fname = os.path.join(path, 'version')
     if os.path.exists(version_fname):
-        version = tools.read_file(version_fname, binary=False)
-    else:
-        version = '(unreleased)'
-    return version
+        return tools.read_file(version_fname, binary=False)
+    try:
+        return metadata.version('binary-manager')
+    except metadata.PackageNotFoundError:
+        return '(unreleased)'

@@ -41,18 +41,8 @@ def make_extract_parser(subparsers):
 class BinmanVersion(argparse.Action):
     """Handles the -V option to binman
 
-    This reads the version information from a file called 'version' in the same
-    directory as this file.
-
-    If not present it assumes this is running from the U-Boot tree and collects
-    the version from the Makefile.
-
-    The format of the version information is three VAR = VALUE lines, for
-    example:
-
-        VERSION = 2022
-        PATCHLEVEL = 01
-        EXTRAVERSION = -rc2
+    This shows the version from state.GetVersion(), i.e. from a local 'version'
+    file, or else the version of the installed package
     """
     def __init__(self, nargs=0, **kwargs):
         super().__init__(nargs=nargs, **kwargs)

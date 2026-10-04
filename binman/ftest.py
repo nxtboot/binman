@@ -5589,16 +5589,24 @@ class TestFunctional(unittest.TestCase):
     def testVersion(self):
         """Test we can get the binman version"""
         version = '(unreleased)'
-        self.assertEqual(version, state.GetVersion(self._indir))
+        with unittest.mock.patch.object(
+                state.metadata, 'version',
+                side_effect=state.metadata.PackageNotFoundError):
+            self.assertEqual(version, state.GetVersion(self._indir))
 
-        with self.assertRaises(SystemExit):
-            with terminal.capture() as (_, stderr):
-                self._DoBinman('-V')
-        self.assertEqual('Binman %s\n' % version, stderr.getvalue())
+            with self.assertRaises(SystemExit):
+                with terminal.capture() as (_, stderr):
+                    self._DoBinman('-V')
+            self.assertEqual('Binman %s\n' % version, stderr.getvalue())
+
+        # Use the version of the installed package, if available
+        with unittest.mock.patch.object(state.metadata, 'version',
+                                        return_value='0.1.0'):
+            self.assertEqual('0.1.0', state.GetVersion(self._indir))
 
         # Try running the tool too, just to be safe
         result = self._RunBinman('-V')
-        self.assertEqual('Binman %s\n' % version, result.stderr)
+        self.assertEqual('Binman %s\n' % state.GetVersion(), result.stderr)
 
         # Set up a version file to make sure that works
         version = 'v2025.01-rc2'
