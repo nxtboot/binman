@@ -2216,7 +2216,7 @@ being used (-T) since they are incompatible.
 Writing tests
 -------------
 
-See :doc:`../binman_tests`.
+See :doc:`binman_tests`.
 
 Debugging tests
 ---------------

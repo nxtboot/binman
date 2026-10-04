@@ -117,7 +117,7 @@ class Entry_section(Entry):
     Properties / Entry arguments
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    See :ref:`develop/package/binman:Image description format` for more
+    See :ref:`binman:Image description format` for more
     information.
 
     align-default
