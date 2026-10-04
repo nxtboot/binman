@@ -8,6 +8,14 @@ the project follows `Semantic Versioning <https://semver.org/>`_.
 Unreleased
 ----------
 
+Fixed
+~~~~~
+- The vendored ``u_boot_pylib`` and ``dtoc`` libraries are installed inside
+  the ``binman`` package rather than as top-level packages. These shadowed
+  U-Boot's own copies, breaking its dtoc tool when binman was installed in
+  the same environment, and clashed with the separate ``u_boot_pylib`` and
+  ``dtoc`` packages.
+
 0.1.0 - 2026-10-04
 ------------------
 

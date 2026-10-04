@@ -45,8 +45,9 @@ Repository = "https://github.com/nxtboot/binman"
 binman = "binman.main:start_binman"
 
 [tool.setuptools.packages.find]
-# binman.test and its subdirs hold the test data, found as namespace packages
-include = ["binman*", "dtoc", "u_boot_pylib"]
+# binman.test and its subdirs hold the test data, found as namespace packages.
+# binman._vendor holds the vendored libraries (see binman/__init__.py)
+include = ["binman*"]
 
 [tool.setuptools.package-data]
 binman = ["*.rst", "missing-blob-help"]
