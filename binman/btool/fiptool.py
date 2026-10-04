@@ -107,8 +107,10 @@ class Bintoolfiptool(bintool.Bintool):
         """
         if method != bintool.FETCH_BUILD:
             return None
+        # TF-A builds the tool in the build directory for the default
+        # platform (fvp), rather than in tools/fiptool/
         result = self.build_from_git(
             'https://git.trustedfirmware.org/TF-A/trusted-firmware-a.git',
             ['fiptool'],
-            'tools/fiptool/fiptool')
+            'build/fvp/release/tools/fiptool/fiptool')
         return result
