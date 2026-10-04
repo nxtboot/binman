@@ -69,12 +69,16 @@ jobs:
 
       # swig and python3-dev build pylibfdt, which has no wheels. The
       # tests build 32-bit x86 ELF programs (gcc-multilib) and compile
-      # devicetree sources (device-tree-compiler).
+      # devicetree sources (device-tree-compiler). Install fiptool and
+      # bootgen from the distro, along with the dependencies for building
+      # cst (byacc, libssl-dev) and futility (uuid-dev), which binman
+      # fetches below.
       - name: Install system packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y device-tree-compiler gcc-multilib \
-            python3-dev swig
+          sudo apt-get install -y arm-trusted-firmware-tools byacc \
+            device-tree-compiler gcc-multilib libssl-dev python3-dev swig \
+            uuid-dev xilinx-bootgen
 
       - name: Download the U-Boot tools
         uses: actions/download-artifact@v8
@@ -139,8 +143,9 @@ jobs:
       - name: Install system packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y device-tree-compiler gcc-multilib \
-            python3-dev swig
+          sudo apt-get install -y arm-trusted-firmware-tools byacc \
+            device-tree-compiler gcc-multilib libssl-dev python3-dev swig \
+            uuid-dev xilinx-bootgen
 
       - name: Download the U-Boot tools
         uses: actions/download-artifact@v8
