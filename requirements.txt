@@ -5,4 +5,4 @@ pycryptodomex==3.21.0
 pyelftools==0.31
 pylibfdt==1.7.2.post2
 PyYAML==6.0.3
-yamllint==1.35.1
+yamllint==1.38.0
