@@ -8,7 +8,7 @@ version = "0.0.7"
 authors = [
   { name="Simon Glass", email="sjg@chromium.org" },
 ]
-dependencies = ["pylibfdt", "dtoc >= 0.0.6"]
+dependencies = ["pylibfdt"]
 description = "Binman firmware-packaging tool"
 readme = "README.rst"
 requires-python = ">=3.7"
@@ -30,7 +30,8 @@ test = ["concurrencytest"]
 binman = "binman.main:start_binman"
 
 [tool.setuptools]
-packages = ["binman", "binman.btool", "binman.etype", "u_boot_pylib"]
+packages = ["binman", "binman.btool", "binman.etype", "dtoc",
+            "u_boot_pylib"]
 
 [tool.setuptools.package-data]
 binman = ["*.rst", "missing-blob-help"]
