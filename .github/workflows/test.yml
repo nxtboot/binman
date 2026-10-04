@@ -1,0 +1,206 @@
+name: Tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # U-Boot source to build mkimage and the other U-Boot tools from. Some
+  # tests check the exact output of these tools, so keep this in step with
+  # the U-Boot commit which binman was last synced with.
+  UBOOT_REPO: https://concept.u-boot.org/u-boot/u-boot.git
+  UBOOT_REF: 6454c4a75b0132b9d944e18ef3e4659d857d3964
+
+jobs:
+  uboot-tools:
+    name: Build the U-Boot tools
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore the tools from the cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: uboot-tools.tar
+          key: uboot-tools-${{ env.UBOOT_REF }}
+
+      - name: Build the tools
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bison flex libgnutls28-dev libssl-dev \
+            uuid-dev
+          git init -q u-boot
+          git -C u-boot fetch -q --depth 1 "$UBOOT_REPO" "$UBOOT_REF"
+          git -C u-boot checkout -q FETCH_HEAD
+          make -C u-boot O="$PWD/build" tools-only_defconfig
+          make -C u-boot O="$PWD/build" -j"$(nproc)" tools-only
+          mkdir uboot-tools
+          cp build/tools/{dumpimage,fdt_add_pubkey,fdtgrep,fit_check_sign} \
+            build/tools/{mkeficapsule,mkimage,preload_check_sign} uboot-tools/
+          # Use tar to keep the executable bits, which artifacts drop
+          tar -cf uboot-tools.tar uboot-tools
+
+      - name: Upload the tools
+        uses: actions/upload-artifact@v7
+        with:
+          name: uboot-tools
+          path: uboot-tools.tar
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    needs: uboot-tools
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # swig and python3-dev build pylibfdt, which has no wheels. The
+      # tests build 32-bit x86 ELF programs (gcc-multilib) and compile
+      # devicetree sources (device-tree-compiler).
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y device-tree-compiler gcc-multilib \
+            python3-dev swig
+
+      - name: Download the U-Boot tools
+        uses: actions/download-artifact@v8
+        with:
+          name: uboot-tools
+
+      - name: Unpack the U-Boot tools
+        run: |
+          tar -xf uboot-tools.tar
+          echo "TOOLPATH=--toolpath $PWD/uboot-tools" >> "$GITHUB_ENV"
+
+      # The coverage check runs 'coverage' only from within a virtualenv,
+      # falling back to the distro's 'python3-coverage' otherwise
+      - name: Create a virtualenv
+        run: |
+          python -m venv .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .[test]
+
+      - name: Restore the fetched bintools from the cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.binman-tools
+          key: binman-tools-${{ hashFiles('binman/btool/*.py') }}
+
+      # Install the other external tools which the tests use, via apt or
+      # by building them from source. Tests skip any tool which is missing.
+      - name: Fetch missing bintools
+        run: binman $TOOLPATH tool -f missing
+
+      - name: Run the test suite
+        run: binman $TOOLPATH test
+
+      # Coverage needs the tests to run single-threaded, so only check it
+      # once
+      - name: Check test coverage
+        if: matrix.python-version == '3.12'
+        run: binman $TOOLPATH test -T
+
+  test-latest:
+    # Run against the newest dependency versions (no requirements.txt
+    # pins), which is what a fresh 'pip install binary-manager' gets. This
+    # catches breakage from upstream releases before users hit it, rather
+    # than only testing the pinned versions above.
+    name: Test (latest deps, Python 3.12)
+    needs: uboot-tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y device-tree-compiler gcc-multilib \
+            python3-dev swig
+
+      - name: Download the U-Boot tools
+        uses: actions/download-artifact@v8
+        with:
+          name: uboot-tools
+
+      - name: Unpack the U-Boot tools
+        run: |
+          tar -xf uboot-tools.tar
+          echo "TOOLPATH=--toolpath $PWD/uboot-tools" >> "$GITHUB_ENV"
+
+      - name: Install with the latest dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[test]
+
+      - name: Restore the fetched bintools from the cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.binman-tools
+          key: binman-tools-${{ hashFiles('binman/btool/*.py') }}
+
+      - name: Fetch missing bintools
+        run: binman $TOOLPATH tool -f missing
+
+      - name: Run the test suite
+        run: binman $TOOLPATH test
+
+  package:
+    name: Build and check the package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+
+      - name: Check the distribution with twine
+        run: twine check --strict dist/*
+
+      - name: Install the wheel into a clean environment and smoke-test it
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-dev swig
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/pip install --upgrade pip
+          /tmp/smoke/bin/pip install dist/*.whl
+          /tmp/smoke/bin/binman --help > /dev/null
+          /tmp/smoke/bin/binman -V
+          echo 'entry point works'
+
+      - name: Upload the built distribution
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/*
