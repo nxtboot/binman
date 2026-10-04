@@ -8,6 +8,9 @@ the project follows `Semantic Versioning <https://semver.org/>`_.
 Unreleased
 ----------
 
+0.1.1 - 2026-10-04
+------------------
+
 Fixed
 ~~~~~
 - The vendored ``u_boot_pylib`` and ``dtoc`` libraries are installed inside
