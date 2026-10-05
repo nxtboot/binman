@@ -884,7 +884,8 @@ def Binman(args):
 
             if args.cmd == 'blob':
                 from binman import blob
-                blob.Blob.set_blob_dir(args.tooldir)
+                # Keep blobs apart from the bintools
+                blob.Blob.set_blob_dir(os.path.join(args.tooldir, 'blobs'))
                 if args.list:
                     blob.Blob.list_all()
                 elif args.list_stores:
