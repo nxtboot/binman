@@ -9146,8 +9146,12 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
                 tools.write_file(os.path.join(output_dir, 'bl31.bin'), b'bl31')
             return command.CommandResult()
 
-        args = ['blob', '--fetch', 'arm,trusted-firmware-a',
-                '--version', '2.9', '--arch', 'aarch64', '--plat', 'sun50i_a64']
+        # Use a private tool directory, so the blob is not cached in the
+        # user's one
+        tooldir = os.path.join(self._indir, 'tools')
+        args = ['--tooldir', tooldir, 'blob', '--fetch',
+                'arm,trusted-firmware-a', '--version', '2.9', '--arch',
+                'aarch64', '--plat', 'sun50i_a64']
         try:
             command.TEST_RESULT = handle_command
             with terminal.capture() as (stdout, _):
@@ -9155,17 +9159,25 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
             self.assertIn('Fetch:', stdout.getvalue())
         finally:
             command.TEST_RESULT = None
+        self.assertEqual(b'bl31', tools.read_file(os.path.join(
+            tooldir, 'arm,trusted-firmware-a', '2.9', 'aarch64', 'sun50i_a64',
+            'bl31.bin')))
 
     def testBlobAdd(self):
         """Test blob add command"""
         test_file = os.path.join(self._indir, 'blob_add_test.bin')
         tools.write_file(test_file, b'test blob data')
 
-        args = ['blob', '--add', 'test,added', '--file', test_file,
-                '--version', '1.0', '--arch', 'aarch64', '--plat', 'generic']
+        tooldir = os.path.join(self._indir, 'tools')
+        args = ['--tooldir', tooldir, 'blob', '--add', 'test,added', '--file',
+                test_file, '--version', '1.0', '--arch', 'aarch64', '--plat',
+                'generic']
         with terminal.capture() as (stdout, _):
             self._DoBinman(*args)
         self.assertIn('Added', stdout.getvalue())
+        self.assertEqual(b'test blob data', tools.read_file(os.path.join(
+            tooldir, 'test,added', '1.0', 'aarch64', 'generic',
+            'blob_add_test.bin')))
 
 if __name__ == "__main__":
     unittest.main()
