@@ -239,6 +239,7 @@ class TestBlobFunctional(unittest.TestCase):
 
         handler = Blobatf('arm,trusted-firmware-a')
         result_tmpdir = [None]
+        make_cmds = []
 
         def handle_command(pipe_list):
             cmd = pipe_list[0]
@@ -249,6 +250,7 @@ class TestBlobFunctional(unittest.TestCase):
                 os.makedirs(tmpdir, exist_ok=True)
             # Handle make - create the output file
             elif cmd[0] == 'make':
+                make_cmds.append(cmd)
                 # Find tmpdir from -C flag
                 tmpdir = cmd[2]
                 output_dir = os.path.join(tmpdir, 'build', 'sun50i_a64', 'release')
@@ -268,10 +270,35 @@ class TestBlobFunctional(unittest.TestCase):
             self.assertEqual(b'fake bl31 content', tools.read_file(fname))
             self.assertIn('Building TF-A', stdout.getvalue())
 
+            # Only BL31 is built
+            self.assertEqual(1, len(make_cmds))
+            self.assertEqual(['bl31', 'PLAT=sun50i_a64', 'DEBUG=0'],
+                             list(make_cmds[0][5:]))
+
             # Clean up
             shutil.rmtree(tmpdir)
         finally:
             command.TEST_RESULT = None
+
+    def test_atf_handler_cross_compile(self):
+        """Test that the ATF handler uses the user's toolchain if set"""
+        from binman.blobs.atf import Blobatf
+
+        handler = Blobatf('arm,trusted-firmware-a')
+        with unittest.mock.patch.object(handler, 'build_from_git',
+                                        return_value=None) as mock_build:
+            with terminal.capture():
+                with unittest.mock.patch.dict(os.environ,
+                                              {'CROSS_COMPILE': 'my-gcc-'}):
+                    handler.build('2.9', 'aarch64', 'rk3399')
+                env = dict(os.environ)
+                env.pop('CROSS_COMPILE', None)
+                with unittest.mock.patch.dict(os.environ, env, clear=True):
+                    handler.build('2.9', 'aarch64', 'rk3399')
+        self.assertEqual(
+            ['my-gcc-', 'aarch64-linux-gnu-'],
+            [call[1]['env']['CROSS_COMPILE']
+             for call in mock_build.call_args_list])
 
     def test_atf_handler_version_formats(self):
         """Test ATF handler handles different version formats"""
