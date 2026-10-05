@@ -8,21 +8,29 @@
 # - stores: Sources from which blobs can be fetched
 # - blobs: Known firmware blob types and their fetch configurations
 
+# Each store has a type, which is one of:
+#   build - build from source, using the blob handler's build() method
+#   local - copy from a local file, given by the 'pattern' of each blob
+#   url   - download the file at the URL given by the 'pattern' of each blob
+#           (or by 'repo' followed by the pattern, if the pattern is relative)
+# Patterns may contain {version}, {arch} and {plat}, which are replaced with
+# the values requested. A url or local store must provide the blob file
+# itself, since archives are not unpacked. For example:
+#
+#   stores:
+#     my-mirror:
+#       type: url
+#       repo: https://example.com/firmware
+#       priority: 50
+#       desc: Prebuilt firmware mirror
+#
+#   blobs:
+#     arm,trusted-firmware-a:
+#       stores:
+#         - store: my-mirror
+#           pattern: tf-a/{version}/{plat}/bl31.bin
+
 stores:
-  # ARM Trusted Firmware releases on GitHub
-  arm-tf-github:
-    type: git-release
-    repo: https://github.com/ARM-software/arm-trusted-firmware
-    priority: 50
-    desc: ARM Trusted Firmware GitHub releases
-
-  # OpenSBI releases on GitHub
-  opensbi-github:
-    type: git-release
-    repo: https://github.com/riscv-software-src/opensbi
-    priority: 50
-    desc: OpenSBI GitHub releases
-
   # Build from source store (delegates to blob handler's build() method)
   source-build:
     type: build
@@ -36,8 +44,6 @@ blobs:
     handler: atf
     stores:
       - store: source-build
-      - store: arm-tf-github
-        pattern: releases/download/lts-v{version}/arm-trusted-firmware-{version}.tar.gz
 
   # Test blob for unit testing
   test,testing:
