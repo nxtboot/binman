@@ -189,9 +189,13 @@ class Blob:
             if source_only:
                 return None
 
-        # Try stores in priority order
+        # Try stores in priority order. Building from source is dealt with
+        # above, so skip any build stores, which would only repeat the build,
+        # or build when asked not to
         stores = blobstore.get_stores_for_compatible(self.compatible)
         for store in sorted(stores, key=lambda s: s.priority):
+            if store.store_type == 'build':
+                continue
             result = store.fetch(self.compatible, version, arch, plat)
             if result:
                 return result

@@ -634,6 +634,39 @@ class TestBlobFunctional(unittest.TestCase):
 
         self.assertIn('Cannot import blob module', str(exc.exception))
 
+    def test_fetch_builds_once(self):
+        """Test that fetching builds from source only once, if at all"""
+        local_file = os.path.join(self._indir, 'firmware.bin')
+        tools.write_file(local_file, b'local firmware')
+        blobstore._config = {
+            'stores': {
+                'source-build': {'type': 'build', 'priority': 10},
+                'local': {'type': 'local', 'priority': 20},
+            },
+            'blobs': {
+                'test,local': {
+                    'handler': '_testing',
+                    'stores': [
+                        {'store': 'source-build'},
+                        {'store': 'local', 'pattern': local_file},
+                    ]
+                }
+            }
+        }
+
+        b = Blob('test,local', 'test')
+        with unittest.mock.patch.object(Blob, 'build',
+                                        return_value=None) as mock_build:
+            # With --no-source, the build store must not build either
+            result = b.fetch('1.0', 'aarch64', 'generic', no_source=True)
+            self.assertEqual(local_file, result[0])
+            mock_build.assert_not_called()
+
+            # Otherwise a failed build is not repeated by the build store
+            result = b.fetch('1.0', 'aarch64', 'generic')
+            self.assertEqual(local_file, result[0])
+            self.assertEqual(1, mock_build.call_count)
+
     def test_stores_sorted_by_priority(self):
         """Test that stores are returned sorted by priority"""
         blobstore._config = {
