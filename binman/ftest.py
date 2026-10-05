@@ -9163,6 +9163,17 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
             tooldir, 'blobs', 'arm,trusted-firmware-a', '2.9', 'aarch64', 'sun50i_a64',
             'bl31.bin')))
 
+    def testBlobFetchFails(self):
+        """Test that a failed blob fetch is reported as an error"""
+        tooldir = os.path.join(self._indir, 'tools')
+        with self.assertRaises(ValueError) as exc:
+            with terminal.capture() as (stdout, _):
+                self._DoBinman('--tooldir', tooldir, 'blob', '--fetch',
+                               'unknown,blob', '--version', '1.0', '--arch',
+                               'aarch64', '--plat', 'generic')
+        self.assertIn("Failed to fetch blob 'unknown,blob'", str(exc.exception))
+        self.assertIn('Failed: unknown,blob', stdout.getvalue())
+
     def testBlobAdd(self):
         """Test blob add command"""
         test_file = os.path.join(self._indir, 'blob_add_test.bin')
