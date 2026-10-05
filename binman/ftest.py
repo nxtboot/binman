@@ -9160,7 +9160,7 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
         finally:
             command.TEST_RESULT = None
         self.assertEqual(b'bl31', tools.read_file(os.path.join(
-            tooldir, 'arm,trusted-firmware-a', '2.9', 'aarch64', 'sun50i_a64',
+            tooldir, 'blobs', 'arm,trusted-firmware-a', '2.9', 'aarch64', 'sun50i_a64',
             'bl31.bin')))
 
     def testBlobAdd(self):
@@ -9176,7 +9176,7 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
             self._DoBinman(*args)
         self.assertIn('Added', stdout.getvalue())
         self.assertEqual(b'test blob data', tools.read_file(os.path.join(
-            tooldir, 'test,added', '1.0', 'aarch64', 'generic',
+            tooldir, 'blobs', 'test,added', '1.0', 'aarch64', 'generic',
             'blob_add_test.bin')))
 
 if __name__ == "__main__":
