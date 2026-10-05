@@ -902,9 +902,12 @@ def Binman(args):
                     if not args.plat:
                         raise ValueError(
                             "Please specify --plat for fetch")
-                    blob.Blob.fetch_blobs([args.fetch], args.version,
-                                          args.arch, args.plat,
-                                          args.source_only, args.no_source)
+                    if not blob.Blob.fetch_blobs([args.fetch], args.version,
+                                                 args.arch, args.plat,
+                                                 args.source_only,
+                                                 args.no_source):
+                        raise ValueError(
+                            f"Failed to fetch blob '{args.fetch}'")
                 elif args.add:
                     if not args.file:
                         raise ValueError(
