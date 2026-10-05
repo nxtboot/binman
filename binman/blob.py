@@ -39,9 +39,6 @@ class Blob:
         compatible: Compatible string identifying this blob type
         desc: Description of the blob
     """
-    # List of blobs to regard as missing
-    missing_list = []
-
     # Directory to store blobs. Must be set by set_blob_dir() before use.
     blobdir = ''
 
@@ -98,11 +95,6 @@ class Blob:
     def set_blob_dir(cls, pathname):
         """Set the path to use to store and find blobs"""
         cls.blobdir = pathname
-
-    @classmethod
-    def set_missing_list(cls, missing_list):
-        """Set the list of blobs to regard as missing (for testing)"""
-        cls.missing_list = missing_list or []
 
     @staticmethod
     def get_blob_list(include_testing=False):
@@ -183,6 +175,8 @@ class Blob:
         """
         # Try build first if not disabled (highest priority)
         if not no_source:
+            # Subclasses which can build override build()
+            # pylint: disable-next=assignment-from-none
             result = self.build(version, arch, plat)
             if result:
                 return result
@@ -261,10 +255,6 @@ class Blob:
         """
         return fetchbase.fetch_from_url(url)
 
-    def show(self):
-        """Show a line of information about a blob handler"""
-        print(FORMAT % (self.compatible, self.desc, ''))
-
     @staticmethod
     def list_all():
         """List all the blob handlers known to binman"""
@@ -301,8 +291,9 @@ class Blob:
         if stores:
             print("Stores:")
             for store in stores:
-                print(f"  - {store.get('store', 'unknown')}: "
-                      f"{store.get('pattern', 'N/A')}")
+                pattern = store.get('pattern')
+                print(f"  - {store.get('store', 'unknown')}" +
+                      (f': {pattern}' if pattern else ''))
 
     @staticmethod
     def fetch_blobs(compatibles, version=None, arch=None, plat=None,
