@@ -44,9 +44,3 @@ blobs:
     handler: atf
     stores:
       - store: source-build
-
-  # Test blob for unit testing
-  test,testing:
-    desc: Test blob for unit testing
-    handler: _testing
-    stores: []
