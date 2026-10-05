@@ -719,6 +719,68 @@ class TestBlobFunctional(unittest.TestCase):
         self.assertEqual([10, 50, 100], sorted(priorities))
 
 
+    def test_fetch_source_only_fails(self):
+        """Test that --source-only gives up if the build fails"""
+        blobstore._config = {
+            'stores': {'local': {'type': 'local', 'priority': 20}},
+            'blobs': {'test,blob': {
+                'handler': '_testing',
+                'stores': [{'store': 'local', 'pattern': __file__}]}},
+        }
+        b = Blob('test,blob', 'test')
+        with unittest.mock.patch.object(Blob, 'build', return_value=None):
+            self.assertIsNone(b.fetch('1.0', 'aarch64', 'generic',
+                                      source_only=True))
+
+            # Without --source-only, the local store is used instead
+            self.assertEqual(__file__,
+                             b.fetch('1.0', 'aarch64', 'generic')[0])
+
+    def test_base_blob_cannot_build(self):
+        """Test that a blob handler cannot build unless it says how"""
+        self.assertIsNone(Blob('test,blob', 'test').build('1.0', 'aarch64',
+                                                          'generic'))
+
+    def test_base_store_cannot_fetch(self):
+        """Test that the base store class does not fetch anything"""
+        store = blobstore.BlobStore('test', 'base', 50, 'test')
+        with self.assertRaises(NotImplementedError):
+            store.fetch('test,blob', '1.0', 'aarch64', 'generic')
+
+    def test_url_store_relative_pattern(self):
+        """Test a URL store with a relative pattern appended to its repo"""
+        store = blobstore.UrlBlobStore(
+            'mirror', 50, 'test', 'tf-a/{version}/{plat}/bl31.bin',
+            {'repo': 'https://example.com/firmware'})
+        with unittest.mock.patch.object(
+                tools, 'download', return_value=('bl31.bin', None)) as mock_dl:
+            with terminal.capture():
+                result = store.fetch('arm,trusted-firmware-a', '2.9',
+                                     'aarch64', 'rk3399')
+        self.assertEqual(('bl31.bin', None), result)
+        mock_dl.assert_called_once_with(
+            'https://example.com/firmware/tf-a/2.9/rk3399/bl31.bin')
+
+    def test_build_store_unknown_blob(self):
+        """Test that the build store fails for a blob with no handler"""
+        store = blobstore.BuildBlobStore('source-build', 10, 'test')
+        with terminal.capture():
+            self.assertIsNone(store.fetch('unknown,blob', '1.0', 'aarch64',
+                                          'generic'))
+
+    def test_handler_module_missing(self):
+        """Test looking up a blob whose handler module does not exist"""
+        blobstore._config = {
+            'blobs': {'test,blob': {'handler': 'nonexistent'}},
+        }
+        name, exc = Blob.find_blob_class('test,blob')
+        self.assertEqual('nonexistent', name)
+        self.assertIsInstance(exc, ImportError)
+        with self.assertRaises(ValueError) as cm:
+            Blob.create('test,blob')
+        self.assertIn("Cannot import blob module 'nonexistent'",
+                      str(cm.exception))
+
 class TestBlobYamlConfig(unittest.TestCase):
     """Tests for YAML configuration loading"""
 
