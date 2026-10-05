@@ -8,6 +8,13 @@ the project follows `Semantic Versioning <https://semver.org/>`_.
 Unreleased
 ----------
 
+Added
+~~~~~
+- ``binman blob`` fetches firmware blobs, such as the BL31 image from ARM
+  Trusted Firmware, preferring to build them from source. Fetched blobs are
+  cached in the ``blobs`` subdirectory of the tool directory. See 'Fetching
+  firmware blobs' in the documentation.
+
 0.1.1 - 2026-10-04
 ------------------
 
