@@ -75,7 +75,8 @@ def RunTestCoverage(toolpath, build_dir, args):
 
     test_util.run_test_coverage(os.path.join(our_path, 'main.py'), None,
             ['*test*', '*main.py', '*/dtoc/*', '*/u_boot_pylib/*'],
-            build_dir, all_set, extra_args or None, args=args)
+            build_dir, all_set, extra_args or None, args=args,
+            test_cmd='test')
 
 def RunBinman(args):
     """Main entry point to binman once arguments are parsed
