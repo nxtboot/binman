@@ -7,6 +7,8 @@
 This handler supports building TF-A from source for various platforms.
 """
 
+import os
+
 from binman import blob
 
 
@@ -75,25 +77,27 @@ class Blobatf(blob.Blob):
         else:
             git_branch = f'v{version}'
 
-        # Build environment
+        # Build environment, using the user's toolchain if they have set one
         env = {
-            'CROSS_COMPILE': 'aarch64-linux-gnu-',
+            'CROSS_COMPILE': os.environ.get('CROSS_COMPILE',
+                                            'aarch64-linux-gnu-'),
         }
 
         # Make flags
         make_flags = [
             f'PLAT={tf_plat}',
             'DEBUG=0',
-            'bl31',
         ] + extra_flags
 
         # Output path for BL31
         output_path = f'build/{tf_plat}/release/bl31.bin'
 
         print(f"- Building TF-A {git_branch} for {tf_plat}")
+        # Build just BL31, since other images, such as the Cortex-M0 firmware
+        # on rk3399, need other toolchains
         return self.build_from_git(
             TF_A_REPO,
-            make_targets=['all'],
+            make_targets=['bl31'],
             output_path=output_path,
             git_branch=git_branch,
             env=env,
