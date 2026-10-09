@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: GPL-2.0+
+# Copyright 2026 Canonical Ltd
+# Written by Simon Glass <simon.glass@canonical.com>
+#
+# Blob stores configuration for binman
+#
+# This file defines:
+# - stores: Sources from which blobs can be fetched
+# - blobs: Known firmware blob types and their fetch configurations
+
+# Each store has a type, which is one of:
+#   build - build from source, using the blob handler's build() method
+#   local - copy from a local file, given by the 'pattern' of each blob
+#   url   - download the file at the URL given by the 'pattern' of each blob
+#           (or by 'repo' followed by the pattern, if the pattern is relative)
+# Patterns may contain {version}, {arch}, {plat} and {file}, which are replaced
+# with the values requested. A url or local store must provide the blob file
+# itself, since archives are not unpacked.
+#
+# Further stores and blob types, such as a private server, can be added in
+# ~/.config/binman/blobstores.yaml or in files listed in $BINMAN_BLOBSTORES,
+# rather than here. See 'Fetching firmware blobs' in the documentation. For
+# example:
+#
+#   stores:
+#     my-mirror:
+#       type: url
+#       repo: https://example.com/firmware
+#       priority: 50
+#       desc: Prebuilt firmware mirror
+#
+#   blobs:
+#     arm,trusted-firmware-a:
+#       stores:
+#         - store: my-mirror
+#           pattern: tf-a/{version}/{plat}/bl31.bin
+
+stores:
+  # Build from source store (delegates to blob handler's build() method)
+  source-build:
+    type: build
+    priority: 10
+    desc: Build from source (highest priority)
+
+blobs:
+  # ARM Trusted Firmware-A (TF-A / ATF)
+  arm,trusted-firmware-a:
+    desc: ARM Trusted Firmware-A (BL31)
+    handler: atf
+    stores:
+      - store: source-build

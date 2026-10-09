@@ -50,5 +50,5 @@ binman = "binman.main:start_binman"
 include = ["binman*"]
 
 [tool.setuptools.package-data]
-binman = ["*.rst", "missing-blob-help"]
+binman = ["*.rst", "*.yaml", "missing-blob-help"]
 "binman.test" = ["**/*"]

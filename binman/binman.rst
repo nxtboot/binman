@@ -1644,6 +1644,152 @@ is auto-generated from the source code.
 
    bintools
 
+Fetching firmware blobs
+=======================
+
+Images often need firmware which is built by another project, such as the
+BL31 image from ARM Trusted Firmware (TF-A). Binman can fetch some of these
+blobs, preferring to build them from source over downloading prebuilt binaries.
+
+Each blob type is identified by a compatible string, such as
+``arm,trusted-firmware-a``. To see the blob types which binman knows about, and
+the stores it can fetch them from, use::
+
+    binman blob --list
+    binman blob --list-stores
+    binman blob --info arm,trusted-firmware-a
+
+To fetch a blob, give its version along with the architecture and platform it
+is for::
+
+    binman blob --fetch arm,trusted-firmware-a --version 2.12 \
+        --arch aarch64 --plat rk3399
+
+Binman first tries to build the blob from source, which needs the relevant
+toolchain. For TF-A this is an aarch64 cross-compiler, given by
+``CROSS_COMPILE`` (default ``aarch64-linux-gnu-``). If that fails, binman tries
+the blob's other stores in priority order, lowest number first. Use
+``--source-only`` to only build from source, or ``--no-source`` to skip
+building. Binman exits with an error if the blob cannot be fetched.
+
+Fetched blobs are cached in the ``blobs`` subdirectory of the tool directory
+(see `Bintools`_), under the compatible string, version, architecture and
+platform, e.g.::
+
+    ~/.binman-tools/blobs/arm,trusted-firmware-a/2.12/aarch64/rk3399/bl31.bin
+
+To put a blob which you have obtained some other way into the cache, use::
+
+    binman blob --add arm,trusted-firmware-a --file bl31.bin --version 2.12 \
+        --arch aarch64 --plat rk3399
+
+Building an image also uses blobs. When an image needs an external blob which
+is not in the input directories (see `External blobs`_), binman looks for a
+blob type which provides that file (see `Blobs for a board`_) and uses the file
+from the cache, fetching it first if needed. If no blob type provides the file,
+or it cannot be fetched, the blob is missing as usual.
+
+Blob stores
+-----------
+
+The blob types and stores are described in ``blobstores.yaml`` in the binman
+package, followed by the user's own configuration, so that, for example, a
+private server can be used without changing binman. Binman reads
+``~/.config/binman/blobstores.yaml``, if it exists, then any files listed in the
+``BINMAN_BLOBSTORES`` environment variable, separated by ``:``. Each file has
+the same format and adds stores and blob types, replacing any with the same
+name.
+
+A store has a type, a priority and a description:
+
+build
+    Build from source, using the blob type's handler
+
+local
+    Copy a local file
+
+url
+    Download a file
+
+For the local and url types, each blob type gives a ``pattern``, which is the
+file's path or URL. A url store may give a ``repo`` URL, which is put in front
+of a pattern which is not a full URL. Patterns may contain ``{version}``,
+``{arch}`` and ``{plat}``, which are replaced with the values requested. These
+stores must provide the blob file itself, since binman does not unpack
+archives. For example, to fetch TF-A from a mirror of prebuilt binaries::
+
+    stores:
+      my-mirror:
+        type: url
+        repo: https://example.com/firmware
+        priority: 50
+        desc: Prebuilt firmware mirror
+
+    blobs:
+      arm,trusted-firmware-a:
+        desc: ARM Trusted Firmware-A (BL31)
+        handler: atf
+        stores:
+          - store: source-build
+          - store: my-mirror
+            pattern: tf-a/{version}/{plat}/bl31.bin
+
+Blobs for a board
+-----------------
+
+A board often needs several blobs, such as the FSP, flash descriptor and video
+BIOS table on an x86 board, which may only be available privately. A blob type
+can list the files it provides, with the version (and optionally architecture)
+to fetch. The ``{file}`` placeholder in a store's pattern is replaced with the
+filename. A blob type with no handler is only fetched from its stores, so no
+code is needed. For example, to provide the blobs for Chromebook Coral from a
+private server::
+
+    stores:
+      lab-server:
+        type: url
+        repo: https://blobs.example.com
+        priority: 50
+        desc: Lab blob server
+
+    blobs:
+      google,chromebook-coral:
+        desc: Chromebook Coral firmware blobs
+        version: '1'
+        plat: chromebook_coral
+        files: [descriptor.bin, fitimage.bin, fsp_m.bin, fsp_s.bin, vbt.bin]
+        stores:
+          - store: lab-server
+            pattern: coral/{version}/{file}
+
+The server then just serves the files, e.g. at
+``https://blobs.example.com/coral/1/fsp_m.bin``, giving an HTTP error for a file
+which does not exist. Change the version when the blobs change, so that they
+are fetched afresh rather than taken from the cache.
+
+The optional ``plat`` restricts the blob type to one platform (board), since
+different boards use the same filenames for different blobs. Binman takes the
+platform being built for from the ``blob-plat`` entry argument (``-a
+blob-plat=<board>``). A blob type without ``plat`` is used for any board.
+
+To fetch all the files of such a blob type in advance, for example to fill the
+cache, use::
+
+    binman blob --fetch google,chromebook-coral
+
+The files are cached under the blob type's version and platform, e.g.
+``~/.binman-tools/blobs/google,chromebook-coral/1/chromebook_coral/fsp_m.bin``
+
+Adding a blob type
+------------------
+
+Each blob type has a handler in the ``blobs/`` directory of the binman package,
+named in ``blobstores.yaml``. The handler is a module defining a class named
+``Blob<handler>`` which is a subclass of ``Blob``. To support building from
+source, it implements ``build()``, typically using ``build_from_git()``, which
+clones a repository, runs ``make`` and returns the file which was built. See
+``blobs/atf.py`` for an example.
+
 Binman commands and arguments
 =============================
 
@@ -1652,7 +1798,8 @@ Usage::
     binman [-h] [-B BUILD_DIR] [-D] [--tooldir TOOLDIR] [-H]
         [--toolpath TOOLPATH] [-T THREADS] [--test-section-timeout]
         [-v VERBOSITY] [-V]
-        {build,bintool-docs,entry-docs,ls,extract,replace,test,tool} ...
+        {build,bintool-docs,entry-docs,ls,extract,replace,sign,test,tool,blob}
+        ...
 
 Binman provides the following commands:
 
@@ -1662,8 +1809,10 @@ Binman provides the following commands:
 - **ls** - list an image
 - **extract** - extract files from an image
 - **replace** - replace one or more entries in an image
+- **sign** - sign entries in an image
 - **test** - run tests
 - **tool** - manage bintools
+- **blob** - fetch firmware blobs (see `Fetching firmware blobs`_)
 
 Options:
 
@@ -2101,7 +2250,7 @@ This is useful in CI systems which want to check that everything is correct but
 don't have access to the blobs.
 
 If the blobs are in a different directory, you can specify this with the `-I`
-option.
+option. Binman can fetch some blobs for you; see `Fetching firmware blobs`_.
 
 For U-Boot, you can set the BINMAN_INDIRS environment variable to provide a
 space-separated list of directories to search for binary blobs::

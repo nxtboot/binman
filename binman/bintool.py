@@ -10,20 +10,17 @@ the tool, checking its version and fetching it if needed.
 """
 
 import collections
-import glob
-import importlib
-import multiprocessing
 import os
 import shutil
 import tempfile
 import urllib.error
 
+from binman import fetchbase
+
 from u_boot_pylib import command
 from u_boot_pylib import terminal
 from u_boot_pylib import tools
 from u_boot_pylib import tout
-
-BINMAN_DIR = os.path.dirname(os.path.realpath(__file__))
 
 # Format string for listing bintools, see also the header in list_all()
 FORMAT = '%-16.16s %-12.12s %-26.26s %s'
@@ -31,17 +28,16 @@ FORMAT = '%-16.16s %-12.12s %-26.26s %s'
 # List of known modules, to avoid importing the module multiple times
 modules = {}
 
-# Possible ways of fetching a tool (FETCH_COUNT is number of ways)
-FETCH_ANY, FETCH_BIN, FETCH_BUILD, FETCH_COUNT = range(4)
-
-FETCH_NAMES = {
-    FETCH_ANY: 'any method',
-    FETCH_BIN: 'binary download',
-    FETCH_BUILD: 'build from source'
-    }
-
-# Status of tool fetching
-FETCHED, FAIL, PRESENT, STATUS_COUNT = range(4)
+# Re-export constants for backwards compatibility
+FETCH_ANY = fetchbase.FETCH_ANY
+FETCH_BIN = fetchbase.FETCH_BIN
+FETCH_BUILD = fetchbase.FETCH_BUILD
+FETCH_COUNT = fetchbase.FETCH_COUNT
+FETCH_NAMES = fetchbase.FETCH_NAMES
+FETCHED = fetchbase.FETCHED
+FAIL = fetchbase.FAIL
+PRESENT = fetchbase.PRESENT
+STATUS_COUNT = fetchbase.STATUS_COUNT
 
 class Bintool:
     """Tool which operates on binaries to help produce entry contents
@@ -76,28 +72,8 @@ class Bintool:
                 module name that could not be found
                 exception received
         """
-        # Convert something like 'u-boot' to 'u_boot' since we are only
-        # interested in the type.
-        module_name = btype.replace('-', '_')
-        module = modules.get(module_name)
-        class_name = f'Bintool{module_name}'
-
-        # Import the module if we have not already done so
-        if not module:
-            try:
-                module = importlib.import_module('binman.btool.' + module_name)
-            except ImportError as exc:
-                try:
-                    # Deal with classes which must be renamed due to conflicts
-                    # with Python libraries
-                    module = importlib.import_module('binman.btool.btool_' +
-                                                     module_name)
-                except ImportError:
-                    return module_name, exc
-            modules[module_name] = module
-
-        # Look up the expected class name
-        return getattr(module, class_name)
+        return fetchbase.find_module_class(
+            modules, btype, 'binman.btool', 'Bintool', fallback_prefix='btool_')
 
     @staticmethod
     def create(name):
@@ -142,15 +118,7 @@ class Bintool:
         Returns:
             list of str: names of all tools known to binman
         """
-        files = glob.glob(os.path.join(BINMAN_DIR, 'btool/*'))
-        names = [os.path.splitext(os.path.basename(fname))[0]
-                 for fname in files]
-        names = [name for name in names if name[0] != '_']
-        names = [name[6:] if name.startswith('btool_') else name
-                 for name in names]
-        if include_testing:
-            names.append('_testing')
-        return sorted(names)
+        return fetchbase.get_module_list('btool', include_testing)
 
     @staticmethod
     def list_all():
@@ -355,29 +323,9 @@ class Bintool:
                 str: Name of temp directory to remove, or None
             or None on error
         """
-        tmpdir = tempfile.mkdtemp(prefix='binmanf.')
-        print(f"- clone git repo '{git_repo}' to '{tmpdir}'")
-        if git_branch:
-            tools.run('git', 'clone', '--depth', '1', '--branch', git_branch,
-                      git_repo, tmpdir)
-        else:
-            tools.run('git', 'clone', '--depth', '1', git_repo, tmpdir)
-        for target in make_targets:
-            print(f"- build target '{target}'")
-            makedir = tmpdir
-            if make_path:
-                makedir = os.path.join(tmpdir, make_path)
-            cmd = ['make', '-C', makedir, '-j', f'{multiprocessing.cpu_count()}',
-                   target]
-            if flags:
-                cmd += flags
-            tools.run(*cmd)
-
-        fname = os.path.join(tmpdir, bintool_path)
-        if not os.path.exists(fname):
-            print(f"- File '{fname}' was not produced")
-            return None
-        return fname, tmpdir
+        return fetchbase.build_from_git(
+            git_repo, make_targets, bintool_path, git_branch=git_branch,
+            make_flags=flags, make_path=make_path)
 
     @classmethod
     def fetch_from_url(cls, url):
@@ -391,9 +339,7 @@ class Bintool:
                 str: Filename of fetched file to copy to a suitable directory
                 str: Name of temp directory to remove, or None
         """
-        fname, tmpdir = tools.download(url)
-        tools.run('chmod', 'a+x', fname)
-        return fname, tmpdir
+        return fetchbase.fetch_from_url(url, make_executable=True)
 
     @classmethod
     def fetch_from_drive(cls, drive_id):

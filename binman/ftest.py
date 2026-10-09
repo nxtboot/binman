@@ -24,6 +24,7 @@ import urllib.error
 import zlib
 
 from binman import bintool
+from binman import blobstore
 from binman import cbfs_util
 from binman import cmdline
 from binman import control
@@ -387,7 +388,8 @@ class TestFunctional(unittest.TestCase):
                     use_expanded=False, verbosity=None, allow_missing=False,
                     allow_fake_blobs=False, extra_indirs=None, threads=None,
                     test_section_timeout=False, update_fdt_in_elf=None,
-                    force_missing_bintools='', ignore_missing=False, output_dir=None):
+                    force_missing_bintools='', ignore_missing=False, output_dir=None,
+                    tooldir=None):
         """Run binman with a given test file
 
         Args:
@@ -421,6 +423,8 @@ class TestFunctional(unittest.TestCase):
             ignore_missing (bool): True to return success even if there are
                 missing blobs or bintools
             output_dir: Specific output directory to use for image using -O
+            tooldir: Tool directory to use (--tooldir), e.g. to keep fetched
+                blobs out of the user's own
 
         Returns:
             int return code, 0 on success
@@ -439,6 +443,8 @@ class TestFunctional(unittest.TestCase):
             args.append('-T%d' % threads)
         if test_section_timeout:
             args.append('--test-section-timeout')
+        if tooldir:
+            args += ['--tooldir', tooldir]
         args += ['build', '-p', '-I', self._indir, '-d', self.TestFile(fname)]
         if map:
             args.append('-m')
@@ -520,7 +526,7 @@ class TestFunctional(unittest.TestCase):
     def _DoReadFileDtb(self, fname, use_real_dtb=False, use_expanded=False,
                        verbosity=None, allow_fake_blobs=True, map=False,
                        update_dtb=False, entry_args=None, reset_dtbs=True,
-                       extra_indirs=None, threads=None):
+                       extra_indirs=None, threads=None, tooldir=None):
         """Run binman and return the resulting image
 
         This runs binman with a given test file and then reads the resulting
@@ -551,6 +557,8 @@ class TestFunctional(unittest.TestCase):
             extra_indirs: Extra input directories to add using -I
             threads: Number of threads to use (None for default, 0 for
                 single-threaded)
+            tooldir: Tool directory to use (--tooldir), e.g. to keep fetched
+                blobs out of the user's own
 
         Returns:
             Tuple:
@@ -577,7 +585,7 @@ class TestFunctional(unittest.TestCase):
                     entry_args=entry_args, use_real_dtb=use_real_dtb,
                     use_expanded=use_expanded, verbosity=verbosity,
                     allow_fake_blobs=allow_fake_blobs, extra_indirs=extra_indirs,
-                    threads=threads)
+                    threads=threads, tooldir=tooldir)
             self.assertEqual(0, retcode)
             out_dtb_fname = tools.get_output_filename('u-boot.dtb.out')
 
@@ -9042,6 +9050,242 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
                       "Parent node is missing 'bootph-all' property")
         self.assertEqual(len(subnode4.props), 0,
                         "subnode shouldn't have any properties")
+
+    def testBlobList(self):
+        """Test listing blob types"""
+        args = ['blob', '--list']
+        with terminal.capture() as (stdout, _):
+            self._DoBinman(*args)
+        out = stdout.getvalue()
+        self.assertIn('Compatible', out)
+        self.assertIn('Description', out)
+
+    def testBlobListStores(self):
+        """Test listing blob stores"""
+        args = ['blob', '--list-stores']
+        with terminal.capture() as (stdout, _):
+            self._DoBinman(*args)
+        out = stdout.getvalue()
+        self.assertIn('Name', out)
+        self.assertIn('Type', out)
+        self.assertIn('Pri', out)
+
+    def testBlobInfo(self):
+        """Test showing blob info"""
+        args = ['blob', '--info', 'arm,trusted-firmware-a']
+        with terminal.capture() as (stdout, _):
+            self._DoBinman(*args)
+        out = stdout.getvalue()
+        self.assertIn('Compatible:', out)
+        self.assertIn('arm,trusted-firmware-a', out)
+
+    def testBlobInvalidArgs(self):
+        """Test blob command with no arguments"""
+        args = ['blob']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn("Invalid arguments to 'blob' subcommand",
+                      str(e.exception))
+
+    def testBlobFetchMissingVersion(self):
+        """Test blob fetch without --version"""
+        args = ['blob', '--fetch', 'arm,trusted-firmware-a']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --version for fetch', str(e.exception))
+
+    def testBlobFetchMissingArch(self):
+        """Test blob fetch without --arch"""
+        args = ['blob', '--fetch', 'arm,trusted-firmware-a', '--version', '2.9']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --arch for fetch', str(e.exception))
+
+    def testBlobFetchMissingPlat(self):
+        """Test blob fetch without --plat"""
+        args = ['blob', '--fetch', 'arm,trusted-firmware-a',
+                '--version', '2.9', '--arch', 'aarch64']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --plat for fetch', str(e.exception))
+
+    def testBlobAddMissingFile(self):
+        """Test blob add without --file"""
+        args = ['blob', '--add', 'test,blob']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --file for add', str(e.exception))
+
+    def testBlobAddMissingVersion(self):
+        """Test blob add without --version"""
+        args = ['blob', '--add', 'test,blob', '--file', '/tmp/test.bin']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --version for add', str(e.exception))
+
+    def testBlobAddMissingArch(self):
+        """Test blob add without --arch"""
+        args = ['blob', '--add', 'test,blob', '--file', '/tmp/test.bin',
+                '--version', '1.0']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --arch for add', str(e.exception))
+
+    def testBlobAddMissingPlat(self):
+        """Test blob add without --plat"""
+        args = ['blob', '--add', 'test,blob', '--file', '/tmp/test.bin',
+                '--version', '1.0', '--arch', 'aarch64']
+        with self.assertRaises(ValueError) as e:
+            self._DoBinman(*args)
+        self.assertIn('Please specify --plat for add', str(e.exception))
+
+    def testBlobFetch(self):
+        """Test blob fetch command"""
+        def handle_command(pipe_list):
+            cmd = pipe_list[0]
+            if cmd[0] == 'git':
+                tmpdir = cmd[-1]
+                os.makedirs(tmpdir, exist_ok=True)
+            elif cmd[0] == 'make':
+                tmpdir = cmd[2]
+                output_dir = os.path.join(tmpdir, 'build', 'sun50i_a64',
+                                          'release')
+                os.makedirs(output_dir, exist_ok=True)
+                tools.write_file(os.path.join(output_dir, 'bl31.bin'), b'bl31')
+            return command.CommandResult()
+
+        # Use a private tool directory, so the blob is not cached in the
+        # user's one
+        tooldir = os.path.join(self._indir, 'tools')
+        args = ['--tooldir', tooldir, 'blob', '--fetch',
+                'arm,trusted-firmware-a', '--version', '2.9', '--arch',
+                'aarch64', '--plat', 'sun50i_a64']
+        try:
+            command.TEST_RESULT = handle_command
+            with terminal.capture() as (stdout, _):
+                self._DoBinman(*args)
+            self.assertIn('Fetch:', stdout.getvalue())
+        finally:
+            command.TEST_RESULT = None
+        self.assertEqual(b'bl31', tools.read_file(os.path.join(
+            tooldir, 'blobs', 'arm,trusted-firmware-a', '2.9', 'aarch64', 'sun50i_a64',
+            'bl31.bin')))
+
+    def testBlobFetchFails(self):
+        """Test that a failed blob fetch is reported as an error"""
+        tooldir = os.path.join(self._indir, 'tools')
+        with self.assertRaises(ValueError) as exc:
+            with terminal.capture() as (stdout, _):
+                self._DoBinman('--tooldir', tooldir, 'blob', '--fetch',
+                               'unknown,blob', '--version', '1.0', '--arch',
+                               'aarch64', '--plat', 'generic')
+        self.assertIn("Failed to fetch blob 'unknown,blob'", str(exc.exception))
+        self.assertIn('Failed: unknown,blob', stdout.getvalue())
+
+    def _SetupBlobStore(self, plat=None):
+        """Set up a blob store providing fetched.bin, using a local store
+
+        Args:
+            plat (str): Platform to restrict the blob type to, or None
+
+        Returns:
+            tuple:
+                str: Path to the file in the store
+                str: Tool directory to use, holding the blob cache
+        """
+        # Use a private directory, outside the input directory so that the
+        # file must be fetched
+        store_dir = tempfile.mkdtemp(prefix='binman-blobstore.')
+        store_file = os.path.join(store_dir, 'fetched.bin')
+        tools.write_file(store_file, b'fetched blob')
+        config = os.path.join(store_dir, 'blobstores.yaml')
+        plat_line = f'    plat: {plat}\n' if plat else ''
+        tools.write_file(config, (
+            'stores:\n'
+            '  test-local:\n'
+            '    type: local\n'
+            '    priority: 20\n'
+            'blobs:\n'
+            '  test,fetched:\n'
+            '    version: 2\n'
+            f'{plat_line}'
+            '    files: [fetched.bin, other.bin]\n'
+            '    stores:\n'
+            '      - store: test-local\n'
+            f'        pattern: {store_dir}/{{file}}\n'), binary=False)
+        blobstore._config = None
+        self.addCleanup(setattr, blobstore, '_config', None)
+        self.addCleanup(shutil.rmtree, store_dir)
+        patcher = unittest.mock.patch.dict(
+            os.environ, {blobstore.CONFIG_ENV: config})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return store_file, os.path.join(store_dir, 'tools')
+
+    def testBlobFetchForBuild(self):
+        """Test that a build fetches a missing external blob"""
+        store_file, tooldir = self._SetupBlobStore()
+        data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir)[0]
+        self.assertEqual(b'fetched blob', data)
+        cached = os.path.join(tooldir, 'blobs', 'test,fetched', '2',
+                              'fetched.bin')
+        self.assertEqual(b'fetched blob', tools.read_file(cached))
+
+        # A second build uses the cache, without the store
+        os.remove(store_file)
+        data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir)[0]
+        self.assertEqual(b'fetched blob', data)
+
+    def testBlobFetchForBuildPlat(self):
+        """Test that a blob type for a platform is only used for that one"""
+        _, tooldir = self._SetupBlobStore(plat='myboard')
+        with terminal.capture() as (_, stderr):
+            ret = self._DoTestFile('blob/fetch.dts', tooldir=tooldir,
+                                   allow_missing=True,
+                                   entry_args={'blob-plat': 'other'})
+        self.assertEqual(103, ret)
+        self.assertIn('Missing blob', stderr.getvalue())
+
+        data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir,
+                                   entry_args={'blob-plat': 'myboard'})[0]
+        self.assertEqual(b'fetched blob', data)
+
+    def testBlobFetchCmdFiles(self):
+        """Test fetching a blob type which lists its files"""
+        store_file, tooldir = self._SetupBlobStore()
+        with terminal.capture() as (stdout, _):
+            with self.assertRaises(ValueError) as exc:
+                self._DoBinman('--tooldir', tooldir, 'blob', '--fetch',
+                               'test,fetched')
+        self.assertIn("Failed to fetch blob 'test,fetched'",
+                      str(exc.exception))
+        self.assertIn("'fetched.bin' cached at", stdout.getvalue())
+        self.assertIn("failed to fetch 'other.bin'", stdout.getvalue())
+
+        # With all the files present, the fetch succeeds
+        tools.write_file(os.path.join(os.path.dirname(store_file),
+                                      'other.bin'), b'other')
+        with terminal.capture():
+            self.assertEqual(0, self._DoBinman('--tooldir', tooldir, 'blob',
+                                               '--fetch', 'test,fetched'))
+        self.assertEqual(b'other', tools.read_file(os.path.join(
+            tooldir, 'blobs', 'test,fetched', '2', 'other.bin')))
+
+    def testBlobAdd(self):
+        """Test blob add command"""
+        test_file = os.path.join(self._indir, 'blob_add_test.bin')
+        tools.write_file(test_file, b'test blob data')
+
+        tooldir = os.path.join(self._indir, 'tools')
+        args = ['--tooldir', tooldir, 'blob', '--add', 'test,added', '--file',
+                test_file, '--version', '1.0', '--arch', 'aarch64', '--plat',
+                'generic']
+        with terminal.capture() as (stdout, _):
+            self._DoBinman(*args)
+        self.assertIn('Added', stdout.getvalue())
+        self.assertEqual(b'test blob data', tools.read_file(os.path.join(
+            tooldir, 'blobs', 'test,added', '1.0', 'aarch64', 'generic',
+            'blob_add_test.bin')))
 
 if __name__ == "__main__":
     unittest.main()
