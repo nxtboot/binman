@@ -48,8 +48,9 @@ class Entry_blob(Entry):
 
         An external blob which is not in the input directories may be
         provided by a blob type (see 'Fetching firmware blobs' in the
-        documentation), from the blob cache or a blob store. The platform
-        being built for is given by the 'blob-plat' entry argument.
+        documentation), from the blob cache or a blob store. The blob types
+        used are those named after the compatible strings of the devicetree's
+        root node, i.e. the board and its SoC.
 
         Args:
             fname (str): Filename to find
@@ -65,8 +66,9 @@ class Entry_blob(Entry):
             return tools.get_input_filename(fname, allow_missing)
         pathname = tools.get_input_filename(fname, True)
         if not pathname:
+            root = self._node.GetFdt().GetRoot()
             pathname = blob_fetch.Blob.obtain_for_build(
-                fname, state.GetEntryArg('blob-plat'))
+                fname, fdt_util.GetStringList(root, 'compatible', []))
         if not pathname and not allow_missing:
             # Report the missing file in the usual way
             tools.get_input_filename(fname)

@@ -17,6 +17,10 @@
 # with the values requested. A url or local store must provide the blob file
 # itself, since archives are not unpacked.
 #
+# A blob type may list the files it provides ('files'), in which case it is
+# named after a compatible string and is used for boards whose devicetree root
+# node has that compatible string. Its patterns use {version} and {file}
+#
 # Further stores and blob types, such as a private server, can be added in
 # ~/.config/binman/blobstores.yaml or in files listed in $BINMAN_BLOBSTORES,
 # rather than here. See 'Fetching firmware blobs' in the documentation. For

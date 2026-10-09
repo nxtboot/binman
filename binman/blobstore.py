@@ -105,28 +105,27 @@ def _load_config():
     return _config
 
 
-def find_blobs_for_file(fname, plat=None):
-    """Find the blob types which provide a file
+def find_blobs_for_file(fname, compatibles):
+    """Find the blob types which provide a file for a board
 
-    A blob type can list the files it provides, in 'files', and restrict
-    itself to a platform (board) with 'plat'.
+    A blob type which lists the files it provides ('files') is named after a
+    compatible string, such as a board's ('google,coral') or its SoC's
+    ('intel,apollolake'), and is used for boards whose devicetree root node
+    has that compatible string. This lets a board's own blobs take precedence
+    over blobs shared by all boards with that SoC.
 
     Args:
         fname (str): Filename to look for, e.g. 'fsp_m.bin'
-        plat (str): Platform being built for, or None if not known. A blob
-            type with a 'plat' only matches that platform.
+        compatibles (list of str): Compatible strings of the board, most
+            specific first, as in its devicetree root node
 
     Returns:
-        list of str: Compatible strings of the matching blob types
+        list of str: Compatible strings of the blob types which provide the
+            file, most specific first
     """
-    found = []
-    for compatible, info in sorted(get_all_blobs().items()):
-        if fname not in (info.get('files') or []):
-            continue
-        if info.get('plat') and info['plat'] != plat:
-            continue
-        found.append(compatible)
-    return found
+    blobs = get_all_blobs()
+    return [compat for compat in compatibles
+            if fname in ((blobs.get(compat) or {}).get('files') or [])]
 
 
 def download(url):

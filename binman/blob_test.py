@@ -831,14 +831,13 @@ class TestBlobFiles(unittest.TestCase):
         self.addCleanup(server.shutdown)
         return f'http://127.0.0.1:{server.server_address[1]}'
 
-    def _set_config(self, url_or_dir, local=False, plat=None):
+    def _set_config(self, url_or_dir, local=False):
         """Set up a blob type 'test,files' providing two files
 
         Args:
             url_or_dir (str): Base URL of the server, or directory for a local
                 store
             local (bool): True to use a local store rather than a URL one
-            plat (str): Platform to restrict the blob type to, or None
         """
         if local:
             store = {'type': 'local', 'priority': 20}
@@ -849,8 +848,6 @@ class TestBlobFiles(unittest.TestCase):
         info = {'desc': 'Test files', 'version': 3,
                 'files': ['one.bin', 'two.bin'],
                 'stores': [{'store': 'test', 'pattern': pattern}]}
-        if plat:
-            info['plat'] = plat
         blobstore._config = {'stores': {'test': store},
                              'blobs': {'test,files': info}}
 
@@ -947,18 +944,26 @@ blobs:
         self.assertEqual('Mine', config['blobs']['my,blob']['desc'])
 
     def test_find_blobs_for_file(self):
-        """Test finding the blob types which provide a file"""
-        self._set_config('https://example.com', plat='myboard')
-        info = blobstore._config['blobs']['test,files']
-        blobstore._config['blobs']['test,any'] = dict(info)
-        del blobstore._config['blobs']['test,any']['plat']
-        self.assertEqual(['test,any', 'test,files'],
-                         blobstore.find_blobs_for_file('one.bin', 'myboard'))
-        self.assertEqual(['test,any'],
-                         blobstore.find_blobs_for_file('one.bin', 'other'))
-        self.assertEqual(['test,any'],
-                         blobstore.find_blobs_for_file('one.bin'))
-        self.assertEqual([], blobstore.find_blobs_for_file('three.bin'))
+        """Test finding the blob types which provide a file for a board"""
+        blobstore._config = {'blobs': {
+            'test,board': {'files': ['board.bin', 'shared.bin']},
+            'test,soc': {'files': ['soc.bin', 'shared.bin']},
+            'test,other': {'files': ['board.bin']},
+            'test,nofiles': {},
+        }}
+        compats = ['test,board', 'test,nofiles', 'test,unknown', 'test,soc']
+
+        # Blob types are matched by the board's compatible strings, most
+        # specific first
+        self.assertEqual(['test,board', 'test,soc'],
+                         blobstore.find_blobs_for_file('shared.bin', compats))
+        self.assertEqual(['test,board'],
+                         blobstore.find_blobs_for_file('board.bin', compats))
+        self.assertEqual(['test,soc'],
+                         blobstore.find_blobs_for_file('soc.bin', compats))
+        self.assertEqual([], blobstore.find_blobs_for_file('other.bin',
+                                                           compats))
+        self.assertEqual([], blobstore.find_blobs_for_file('board.bin', []))
 
     def test_create_without_handler(self):
         """Test that a blob type without a handler uses the Blob class"""
@@ -997,14 +1002,31 @@ blobs:
 
     def test_obtain_for_build(self):
         """Test obtaining a file needed by an image build"""
-        self.assertIsNone(Blob.obtain_for_build('one.bin', 'myboard'))
+        self.assertIsNone(Blob.obtain_for_build('one.bin', ['test,files']))
 
         url = self._serve({'board/3/one.bin': b'first'})
-        self._set_config(url, plat='myboard')
+        self._set_config(url)
         with terminal.capture():
-            path = Blob.obtain_for_build('one.bin', 'myboard')
+            path = Blob.obtain_for_build('one.bin',
+                                         ['test,board', 'test,files'])
         self.assertEqual(b'first', tools.read_file(path))
-        self.assertIsNone(Blob.obtain_for_build('one.bin', 'other'))
+        self.assertEqual(os.path.join(self._blobdir, 'test,files', '3',
+                                      'one.bin'), path)
+        self.assertIsNone(Blob.obtain_for_build('one.bin', ['test,other']))
+
+    def test_obtain_for_build_fallback(self):
+        """Test falling back to a less specific blob type"""
+        url = self._serve({'board/3/one.bin': b'soc'})
+        self._set_config(url)
+        info = blobstore._config['blobs']['test,files']
+        board = dict(info, stores=[{'store': 'test',
+                                    'pattern': 'missing/{file}'}])
+        blobstore._config['blobs']['test,board'] = board
+        with terminal.capture():
+            tout.init(tout.WARNING)
+            path = Blob.obtain_for_build('one.bin',
+                                         ['test,board', 'test,files'])
+        self.assertEqual(b'soc', tools.read_file(path))
 
     def test_obtain_for_build_error(self):
         """Test a blob type whose handler cannot be loaded"""
@@ -1012,7 +1034,8 @@ blobs:
         blobstore._config['blobs']['test,files']['handler'] = 'nonexistent'
         with terminal.capture() as (_, stderr):
             tout.init(tout.WARNING)
-            self.assertIsNone(Blob.obtain_for_build('one.bin'))
+            self.assertIsNone(Blob.obtain_for_build('one.bin',
+                                                    ['test,files']))
         self.assertIn("Blob 'test,files': cannot provide 'one.bin'",
                       stderr.getvalue())
 

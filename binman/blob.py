@@ -169,7 +169,9 @@ class Blob:
         """Get a file provided by this blob type, fetching it if needed
 
         This is for blob types which list the files they provide, with the
-        version, architecture and platform given in their configuration.
+        version given in their configuration. The file is cached under the
+        blob type and version, e.g. 'google,coral/1/fsp_m.bin', since the
+        blob type already identifies the board or SoC.
 
         Args:
             fname: Name of the file, e.g. 'fsp_m.bin'
@@ -180,37 +182,37 @@ class Blob:
         """
         info = blobstore.get_blob_info(self.compatible) or {}
         version = str(info.get('version', ''))
-        arch = info.get('arch', '')
-        plat = info.get('plat', '')
-        cache_path = self.get_cache_path(version, arch, plat, fname)
+        cache_path = self.get_cache_path(version, '', '', fname)
         if os.path.exists(cache_path):
             return cache_path
 
-        result = self.fetch(version, arch, plat, fname=fname)
+        result = self.fetch(version, '', '', fname=fname)
         if not result:
             return None
         fpath, tmpdir = result
-        cache_path = self.add_to_cache(fpath, version, arch, plat, fname)
+        cache_path = self.add_to_cache(fpath, version, '', '', fname)
         if tmpdir:
             shutil.rmtree(tmpdir)
         return cache_path
 
     @staticmethod
-    def obtain_for_build(fname, plat=None):
+    def obtain_for_build(fname, compatibles):
         """Get a file needed by an image, from the blob types which provide it
 
         This is used when building an image needs a file which is not in the
-        input directories. It tries each blob type which lists the file, for
-        the platform being built, using the cache or fetching the file.
+        input directories. It tries each blob type which lists the file and
+        matches the board, most specific first, using the cache or fetching
+        the file.
 
         Args:
             fname: Name of the file, e.g. 'fsp_m.bin'
-            plat: Platform being built for, or None if not known
+            compatibles: Compatible strings of the board, most specific
+                first, as in its devicetree root node
 
         Returns:
             str: Path to the file, or None if no blob type could provide it
         """
-        for compatible in blobstore.find_blobs_for_file(fname, plat):
+        for compatible in blobstore.find_blobs_for_file(fname, compatibles):
             try:
                 path = Blob.create(compatible).obtain_file(fname)
             except (OSError, ValueError) as exc:

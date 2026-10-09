@@ -9182,37 +9182,58 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
         self.assertIn("Failed to fetch blob 'unknown,blob'", str(exc.exception))
         self.assertIn('Failed: unknown,blob', stdout.getvalue())
 
-    def _SetupBlobStore(self, plat=None):
+    def _SetupBlobStore(self, board=False):
         """Set up a blob store providing fetched.bin, using a local store
 
+        This sets up blob types for the board and SoC in the root compatible
+        string of blob/fetch.dts ('test,board' and 'test,soc') and for an
+        unrelated board ('test,unused').
+
         Args:
-            plat (str): Platform to restrict the blob type to, or None
+            board (bool): True to have the board's blob type provide
+                fetched.bin as well as the SoC's
 
         Returns:
             tuple:
-                str: Path to the file in the store
+                str: Directory holding the store, with board/ and soc/
+                    subdirectories
                 str: Tool directory to use, holding the blob cache
         """
         # Use a private directory, outside the input directory so that the
         # file must be fetched
         store_dir = tempfile.mkdtemp(prefix='binman-blobstore.')
-        store_file = os.path.join(store_dir, 'fetched.bin')
-        tools.write_file(store_file, b'fetched blob')
+        for subdir, data in (('board', b'board blob'), ('soc', b'soc blob'),
+                             ('unused', b'unused blob')):
+            os.mkdir(os.path.join(store_dir, subdir))
+            tools.write_file(os.path.join(store_dir, subdir, 'fetched.bin'),
+                             data)
+        board_files = '[fetched.bin]' if board else '[board.bin]'
         config = os.path.join(store_dir, 'blobstores.yaml')
-        plat_line = f'    plat: {plat}\n' if plat else ''
         tools.write_file(config, (
             'stores:\n'
             '  test-local:\n'
             '    type: local\n'
             '    priority: 20\n'
             'blobs:\n'
-            '  test,fetched:\n'
+            '  test,board:\n'
+            '    version: 1\n'
+            f'    files: {board_files}\n'
+            '    stores:\n'
+            '      - store: test-local\n'
+            f'        pattern: {store_dir}/board/{{file}}\n'
+            '  test,soc:\n'
             '    version: 2\n'
-            f'{plat_line}'
             '    files: [fetched.bin, other.bin]\n'
             '    stores:\n'
             '      - store: test-local\n'
-            f'        pattern: {store_dir}/{{file}}\n'), binary=False)
+            f'        pattern: {store_dir}/soc/{{file}}\n'
+            '  test,unused:\n'
+            '    version: 3\n'
+            '    files: [fetched.bin]\n'
+            '    stores:\n'
+            '      - store: test-local\n'
+            f'        pattern: {store_dir}/unused/{{file}}\n'),
+            binary=False)
         blobstore._config = None
         self.addCleanup(setattr, blobstore, '_config', None)
         self.addCleanup(shutil.rmtree, store_dir)
@@ -9220,56 +9241,61 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
             os.environ, {blobstore.CONFIG_ENV: config})
         patcher.start()
         self.addCleanup(patcher.stop)
-        return store_file, os.path.join(store_dir, 'tools')
+        return store_dir, os.path.join(store_dir, 'tools')
 
     def testBlobFetchForBuild(self):
-        """Test that a build fetches a missing external blob"""
-        store_file, tooldir = self._SetupBlobStore()
+        """Test that a build fetches a missing external blob for the SoC"""
+        store_dir, tooldir = self._SetupBlobStore()
         data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir)[0]
-        self.assertEqual(b'fetched blob', data)
-        cached = os.path.join(tooldir, 'blobs', 'test,fetched', '2',
+        self.assertEqual(b'soc blob', data)
+
+        # The file is cached by blob type and version
+        cached = os.path.join(tooldir, 'blobs', 'test,soc', '2',
                               'fetched.bin')
-        self.assertEqual(b'fetched blob', tools.read_file(cached))
+        self.assertEqual(b'soc blob', tools.read_file(cached))
 
         # A second build uses the cache, without the store
-        os.remove(store_file)
+        os.remove(os.path.join(store_dir, 'soc', 'fetched.bin'))
         data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir)[0]
-        self.assertEqual(b'fetched blob', data)
+        self.assertEqual(b'soc blob', data)
 
-    def testBlobFetchForBuildPlat(self):
-        """Test that a blob type for a platform is only used for that one"""
-        _, tooldir = self._SetupBlobStore(plat='myboard')
+    def testBlobFetchForBuildBoard(self):
+        """Test that the board's blob type wins over the SoC's"""
+        _, tooldir = self._SetupBlobStore(board=True)
+        data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir)[0]
+        self.assertEqual(b'board blob', data)
+        self.assertFalse(os.path.exists(os.path.join(tooldir, 'blobs',
+                                                     'test,soc')))
+
+    def testBlobFetchForBuildOtherBoard(self):
+        """Test that blob types are not used for other boards"""
+        _, tooldir = self._SetupBlobStore(board=True)
         with terminal.capture() as (_, stderr):
-            ret = self._DoTestFile('blob/fetch.dts', tooldir=tooldir,
-                                   allow_missing=True,
-                                   entry_args={'blob-plat': 'other'})
+            ret = self._DoTestFile('blob/fetch_other.dts', tooldir=tooldir,
+                                   allow_missing=True)
         self.assertEqual(103, ret)
         self.assertIn('Missing blob', stderr.getvalue())
-
-        data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir,
-                                   entry_args={'blob-plat': 'myboard'})[0]
-        self.assertEqual(b'fetched blob', data)
+        self.assertFalse(os.path.exists(os.path.join(tooldir, 'blobs')))
 
     def testBlobFetchCmdFiles(self):
         """Test fetching a blob type which lists its files"""
-        store_file, tooldir = self._SetupBlobStore()
+        store_dir, tooldir = self._SetupBlobStore()
         with terminal.capture() as (stdout, _):
             with self.assertRaises(ValueError) as exc:
                 self._DoBinman('--tooldir', tooldir, 'blob', '--fetch',
-                               'test,fetched')
-        self.assertIn("Failed to fetch blob 'test,fetched'",
-                      str(exc.exception))
+                               'test,soc')
+        self.assertIn("Failed to fetch blob 'test,soc'", str(exc.exception))
         self.assertIn("'fetched.bin' cached at", stdout.getvalue())
         self.assertIn("failed to fetch 'other.bin'", stdout.getvalue())
 
         # With all the files present, the fetch succeeds
-        tools.write_file(os.path.join(os.path.dirname(store_file),
-                                      'other.bin'), b'other')
+        tools.write_file(os.path.join(store_dir, 'soc', 'other.bin'),
+                         b'other')
         with terminal.capture():
             self.assertEqual(0, self._DoBinman('--tooldir', tooldir, 'blob',
-                                               '--fetch', 'test,fetched'))
+                                               '--fetch', 'test,soc'))
         self.assertEqual(b'other', tools.read_file(os.path.join(
-            tooldir, 'blobs', 'test,fetched', '2', 'other.bin')))
+            tooldir, 'blobs', 'test,soc', '2', 'other.bin')))
 
     def testBlobAdd(self):
         """Test blob add command"""

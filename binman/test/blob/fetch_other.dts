@@ -5,7 +5,7 @@
 / {
 	#address-cells = <1>;
 	#size-cells = <1>;
-	compatible = "test,board", "test,soc";
+	compatible = "other,board";
 
 	binman {
 		blob-ext {

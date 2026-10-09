@@ -1685,8 +1685,8 @@ To put a blob which you have obtained some other way into the cache, use::
 
 Building an image also uses blobs. When an image needs an external blob which
 is not in the input directories (see `External blobs`_), binman looks for a
-blob type which provides that file (see `Blobs for a board`_) and uses the file
-from the cache, fetching it first if needed. If no blob type provides the file,
+blob type which provides that file for the board (see `Blobs for a board`_) and
+uses the file from the cache, fetching it first if needed. If no blob type provides the file,
 or it cannot be fetched, the blob is missing as usual.
 
 Blob stores
@@ -1739,11 +1739,20 @@ Blobs for a board
 
 A board often needs several blobs, such as the FSP, flash descriptor and video
 BIOS table on an x86 board, which may only be available privately. A blob type
-can list the files it provides, with the version (and optionally architecture)
-to fetch. The ``{file}`` placeholder in a store's pattern is replaced with the
-filename. A blob type with no handler is only fetched from its stores, so no
-code is needed. For example, to provide the blobs for Chromebook Coral from a
-private server::
+can list the files it provides, with the version to fetch. The ``{file}``
+placeholder in a store's pattern is replaced with the filename. A blob type
+with no handler is only fetched from its stores, so no code is needed.
+
+Such a blob type is named after a compatible string, and is used when building
+an image for a board whose devicetree root node has that compatible string.
+Since the root node lists the board's compatible string first, followed by
+more general ones such as the SoC's, a board's own blobs take precedence over
+blobs which are shared by all boards with that SoC. If the board's blob type
+cannot provide a file, binman falls back to the next one.
+
+For example, Chromebook Coral's devicetree has
+``compatible = "google,coral", "intel,apollolake"``, so its blobs could be
+provided from a private server, sharing the FSP with other Apollo Lake boards::
 
     stores:
       lab-server:
@@ -1753,32 +1762,34 @@ private server::
         desc: Lab blob server
 
     blobs:
-      google,chromebook-coral:
+      google,coral:
         desc: Chromebook Coral firmware blobs
         version: '1'
-        plat: chromebook_coral
-        files: [descriptor.bin, fitimage.bin, fsp_m.bin, fsp_s.bin, vbt.bin]
+        files: [descriptor.bin, fitimage.bin, vbt.bin]
         stores:
           - store: lab-server
             pattern: coral/{version}/{file}
 
+      intel,apollolake:
+        desc: Apollo Lake FSP
+        version: '1'
+        files: [fsp_m.bin, fsp_s.bin]
+        stores:
+          - store: lab-server
+            pattern: apollolake/{version}/{file}
+
 The server then just serves the files, e.g. at
-``https://blobs.example.com/coral/1/fsp_m.bin``, giving an HTTP error for a file
+``https://blobs.example.com/coral/1/vbt.bin``, giving an HTTP error for a file
 which does not exist. Change the version when the blobs change, so that they
 are fetched afresh rather than taken from the cache.
-
-The optional ``plat`` restricts the blob type to one platform (board), since
-different boards use the same filenames for different blobs. Binman takes the
-platform being built for from the ``blob-plat`` entry argument (``-a
-blob-plat=<board>``). A blob type without ``plat`` is used for any board.
 
 To fetch all the files of such a blob type in advance, for example to fill the
 cache, use::
 
-    binman blob --fetch google,chromebook-coral
+    binman blob --fetch google,coral
 
-The files are cached under the blob type's version and platform, e.g.
-``~/.binman-tools/blobs/google,chromebook-coral/1/chromebook_coral/fsp_m.bin``
+The files are cached under the blob type and version, e.g.
+``~/.binman-tools/blobs/google,coral/1/vbt.bin``
 
 Adding a blob type
 ------------------
