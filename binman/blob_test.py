@@ -4,9 +4,12 @@
 #
 """Tests for the Blob class"""
 
+import functools
+import http.server
 import os
 import shutil
 import tempfile
+import threading
 import unittest
 import unittest.mock
 
@@ -17,6 +20,7 @@ from binman.blob import Blob
 from u_boot_pylib import command
 from u_boot_pylib import terminal
 from u_boot_pylib import tools
+from u_boot_pylib import tout
 
 
 # pylint: disable=R0904
@@ -357,7 +361,7 @@ class TestBlobFunctional(unittest.TestCase):
             'test-store', 50, 'test',
             'https://example.com/{version}/{arch}/blob.bin', {})
 
-        with unittest.mock.patch.object(tools, 'download',
+        with unittest.mock.patch.object(blobstore, 'download',
                                         side_effect=fake_download):
             result = store.fetch('test,blob', '1.0', 'aarch64', 'generic')
 
@@ -367,13 +371,13 @@ class TestBlobFunctional(unittest.TestCase):
     def test_url_store_fetch_failure(self):
         """Test UrlBlobStore handles download failure"""
         def fail_download(url):
-            raise Exception('Network error')
+            raise OSError('Network error')
 
         store = blobstore.UrlBlobStore(
             'test-store', 50, 'test',
             'https://example.com/blob.bin', {})
 
-        with unittest.mock.patch.object(tools, 'download',
+        with unittest.mock.patch.object(blobstore, 'download',
                                         side_effect=fail_download):
             result = store.fetch('test,blob', '1.0', 'aarch64', 'generic')
 
@@ -753,7 +757,7 @@ class TestBlobFunctional(unittest.TestCase):
             'mirror', 50, 'test', 'tf-a/{version}/{plat}/bl31.bin',
             {'repo': 'https://example.com/firmware'})
         with unittest.mock.patch.object(
-                tools, 'download', return_value=('bl31.bin', None)) as mock_dl:
+                blobstore, 'download', return_value=('bl31.bin', None)) as mock_dl:
             with terminal.capture():
                 result = store.fetch('arm,trusted-firmware-a', '2.9',
                                      'aarch64', 'rk3399')
@@ -780,6 +784,238 @@ class TestBlobFunctional(unittest.TestCase):
             Blob.create('test,blob')
         self.assertIn("Cannot import blob module 'nonexistent'",
                       str(cm.exception))
+
+
+class QuietHandler(http.server.SimpleHTTPRequestHandler):
+    """HTTP request handler which does not log each request"""
+
+    def log_message(self, *args):  # pylint: disable=W0221
+        """Drop the log message"""
+
+
+# pylint: disable=R0904
+class TestBlobFiles(unittest.TestCase):
+    """Tests for blob types which provide files, as used by image builds"""
+
+    def setUp(self):
+        """Set up a temporary blob directory and an empty configuration"""
+        self._indir = tempfile.mkdtemp(prefix='blobfiles.')
+        self._blobdir = os.path.join(self._indir, 'cache')
+        Blob.set_blob_dir(self._blobdir)
+        blobstore._config = None
+
+    def tearDown(self):
+        """Clean up"""
+        blobstore._config = None
+        shutil.rmtree(self._indir)
+
+    def _serve(self, files):
+        """Start a local HTTP server serving some files
+
+        Args:
+            files (dict): Contents of each file, keyed by path
+
+        Returns:
+            str: Base URL of the server
+        """
+        root = os.path.join(self._indir, 'www')
+        for path, data in files.items():
+            fname = os.path.join(root, path)
+            os.makedirs(os.path.dirname(fname), exist_ok=True)
+            tools.write_file(fname, data)
+        server = http.server.ThreadingHTTPServer(
+            ('127.0.0.1', 0), functools.partial(QuietHandler, directory=root))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return f'http://127.0.0.1:{server.server_address[1]}'
+
+    def _set_config(self, url_or_dir, local=False, plat=None):
+        """Set up a blob type 'test,files' providing two files
+
+        Args:
+            url_or_dir (str): Base URL of the server, or directory for a local
+                store
+            local (bool): True to use a local store rather than a URL one
+            plat (str): Platform to restrict the blob type to, or None
+        """
+        if local:
+            store = {'type': 'local', 'priority': 20}
+            pattern = os.path.join(url_or_dir, 'v{version}', '{file}')
+        else:
+            store = {'type': 'url', 'priority': 50, 'repo': url_or_dir + '/'}
+            pattern = 'board/{version}/{file}'
+        info = {'desc': 'Test files', 'version': 3,
+                'files': ['one.bin', 'two.bin'],
+                'stores': [{'store': 'test', 'pattern': pattern}]}
+        if plat:
+            info['plat'] = plat
+        blobstore._config = {'stores': {'test': store},
+                             'blobs': {'test,files': info}}
+
+    def test_download(self):
+        """Test downloading a file from a server"""
+        url = self._serve({'a/blob.bin': b'blob data'})
+        fname, tmpdir = blobstore.download(f'{url}/a/blob.bin')
+        self.assertEqual(b'blob data', tools.read_file(fname))
+        self.assertEqual('blob.bin', os.path.basename(fname))
+        shutil.rmtree(tmpdir)
+
+    def test_download_missing(self):
+        """Test downloading a file which the server does not have"""
+        url = self._serve({})
+        created = []
+
+        def mkdtemp(**kwargs):
+            created.append(orig_mkdtemp(**kwargs))
+            return created[-1]
+
+        orig_mkdtemp = tempfile.mkdtemp
+        with unittest.mock.patch.object(blobstore.tempfile, 'mkdtemp',
+                                        side_effect=mkdtemp):
+            with self.assertRaises(OSError):
+                blobstore.download(f'{url}/missing.bin')
+
+        # The temporary directory is not left behind
+        self.assertEqual(1, len(created))
+        self.assertFalse(os.path.exists(created[0]))
+
+    def test_url_store_file(self):
+        """Test a URL store fetching one of a blob type's files"""
+        url = self._serve({'board/3/two.bin': b'second'})
+        self._set_config(url)
+        store = blobstore.get_stores_for_compatible('test,files')[0]
+        fname, tmpdir = store.fetch('test,files', '3', '', '', 'two.bin')
+        self.assertEqual(b'second', tools.read_file(fname))
+        shutil.rmtree(tmpdir)
+
+        # A missing file is reported and not returned
+        with terminal.capture():
+            tout.init(tout.WARNING)
+            self.assertIsNone(store.fetch('test,files', '3', '', '',
+                                          'one.bin'))
+
+    def test_substitute_file(self):
+        """Test substituting the filename into a pattern"""
+        self.assertEqual('x/1.0/arm/b/f.bin',
+                         blobstore.BlobStore.substitute_pattern(
+                             '{file}/{version}/{arch}/{plat}/f.bin', '1.0',
+                             'arm', 'b', 'x'))
+
+    def test_user_config_files(self):
+        """Test finding the user's configuration files"""
+        user = os.path.join(self._indir, 'user.yaml')
+        tools.write_file(user, b'')
+        with unittest.mock.patch.object(blobstore, 'USER_CONFIG', user):
+            with unittest.mock.patch.dict(
+                    os.environ, {blobstore.CONFIG_ENV: os.pathsep.join(
+                        ['/a.yaml', '', '/b.yaml'])}):
+                self.assertEqual([user, '/a.yaml', '/b.yaml'],
+                                 blobstore.user_config_files())
+
+        with unittest.mock.patch.object(blobstore, 'USER_CONFIG',
+                                        '/nonexistent/file'):
+            with unittest.mock.patch.dict(os.environ,
+                                          {blobstore.CONFIG_ENV: ''}):
+                self.assertEqual([], blobstore.user_config_files())
+
+    def test_load_user_config(self):
+        """Test that the user's configuration adds to the package's"""
+        extra = os.path.join(self._indir, 'extra.yaml')
+        tools.write_file(extra, b"""
+stores:
+  my-store:
+    type: url
+    repo: https://example.com
+blobs:
+  arm,trusted-firmware-a:
+    desc: Replaced
+    files: [bl31.bin]
+  my,blob:
+    desc: Mine
+""")
+        empty = os.path.join(self._indir, 'empty.yaml')
+        tools.write_file(empty, b'')
+        with unittest.mock.patch.object(blobstore, 'user_config_files',
+                                        return_value=[extra, empty]):
+            config = blobstore._load_config()
+        self.assertIn('source-build', config['stores'])
+        self.assertIn('my-store', config['stores'])
+        self.assertEqual('Replaced',
+                         config['blobs']['arm,trusted-firmware-a']['desc'])
+        self.assertEqual('Mine', config['blobs']['my,blob']['desc'])
+
+    def test_find_blobs_for_file(self):
+        """Test finding the blob types which provide a file"""
+        self._set_config('https://example.com', plat='myboard')
+        info = blobstore._config['blobs']['test,files']
+        blobstore._config['blobs']['test,any'] = dict(info)
+        del blobstore._config['blobs']['test,any']['plat']
+        self.assertEqual(['test,any', 'test,files'],
+                         blobstore.find_blobs_for_file('one.bin', 'myboard'))
+        self.assertEqual(['test,any'],
+                         blobstore.find_blobs_for_file('one.bin', 'other'))
+        self.assertEqual(['test,any'],
+                         blobstore.find_blobs_for_file('one.bin'))
+        self.assertEqual([], blobstore.find_blobs_for_file('three.bin'))
+
+    def test_create_without_handler(self):
+        """Test that a blob type without a handler uses the Blob class"""
+        self._set_config('https://example.com')
+        handler = Blob.create('test,files')
+        self.assertIs(Blob, type(handler))
+        self.assertEqual('Test files', handler.desc)
+
+    def test_obtain_file(self):
+        """Test obtaining a file, from a store and then from the cache"""
+        url = self._serve({'board/3/one.bin': b'first'})
+        self._set_config(url)
+        handler = Blob.create('test,files')
+        with terminal.capture():
+            path = handler.obtain_file('one.bin')
+        self.assertEqual(os.path.join(self._blobdir, 'test,files', '3',
+                                      'one.bin'), path)
+        self.assertEqual(b'first', tools.read_file(path))
+
+        # Once cached, the store is not needed
+        with unittest.mock.patch.object(Blob, 'fetch') as mock_fetch:
+            self.assertEqual(path, handler.obtain_file('one.bin'))
+        mock_fetch.assert_not_called()
+
+        # A file which cannot be fetched is not obtained
+        with terminal.capture():
+            self.assertIsNone(handler.obtain_file('two.bin'))
+
+    def test_obtain_file_local(self):
+        """Test obtaining a file from a local store"""
+        os.makedirs(os.path.join(self._indir, 'v3'))
+        tools.write_file(os.path.join(self._indir, 'v3', 'two.bin'), b'local')
+        self._set_config(self._indir, local=True)
+        path = Blob.create('test,files').obtain_file('two.bin')
+        self.assertEqual(b'local', tools.read_file(path))
+
+    def test_obtain_for_build(self):
+        """Test obtaining a file needed by an image build"""
+        self.assertIsNone(Blob.obtain_for_build('one.bin', 'myboard'))
+
+        url = self._serve({'board/3/one.bin': b'first'})
+        self._set_config(url, plat='myboard')
+        with terminal.capture():
+            path = Blob.obtain_for_build('one.bin', 'myboard')
+        self.assertEqual(b'first', tools.read_file(path))
+        self.assertIsNone(Blob.obtain_for_build('one.bin', 'other'))
+
+    def test_obtain_for_build_error(self):
+        """Test a blob type whose handler cannot be loaded"""
+        self._set_config('https://example.com')
+        blobstore._config['blobs']['test,files']['handler'] = 'nonexistent'
+        with terminal.capture() as (_, stderr):
+            tout.init(tout.WARNING)
+            self.assertIsNone(Blob.obtain_for_build('one.bin'))
+        self.assertIn("Blob 'test,files': cannot provide 'one.bin'",
+                      stderr.getvalue())
+
 
 class TestBlobYamlConfig(unittest.TestCase):
     """Tests for YAML configuration loading"""

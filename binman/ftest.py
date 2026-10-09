@@ -24,6 +24,7 @@ import urllib.error
 import zlib
 
 from binman import bintool
+from binman import blobstore
 from binman import cbfs_util
 from binman import cmdline
 from binman import control
@@ -9173,6 +9174,67 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
                                'aarch64', '--plat', 'generic')
         self.assertIn("Failed to fetch blob 'unknown,blob'", str(exc.exception))
         self.assertIn('Failed: unknown,blob', stdout.getvalue())
+
+    def _SetupBlobStore(self, plat=None):
+        """Set up a blob store providing fetched.bin, using a local store
+
+        Args:
+            plat (str): Platform to restrict the blob type to, or None
+
+        Returns:
+            tuple:
+                str: Path to the file in the store
+                str: Tool directory to use, holding the blob cache
+        """
+        # Use a private directory, outside the input directory so that the
+        # file must be fetched
+        store_dir = tempfile.mkdtemp(prefix='binman-blobstore.')
+        store_file = os.path.join(store_dir, 'fetched.bin')
+        tools.write_file(store_file, b'fetched blob')
+        config = os.path.join(store_dir, 'blobstores.yaml')
+        plat_line = f'    plat: {plat}\n' if plat else ''
+        tools.write_file(config, (
+            'stores:\n'
+            '  test-local:\n'
+            '    type: local\n'
+            '    priority: 20\n'
+            'blobs:\n'
+            '  test,fetched:\n'
+            '    version: 2\n'
+            f'{plat_line}'
+            '    files: [fetched.bin, other.bin]\n'
+            '    stores:\n'
+            '      - store: test-local\n'
+            f'        pattern: {store_dir}/{{file}}\n'), binary=False)
+        blobstore._config = None
+        self.addCleanup(setattr, blobstore, '_config', None)
+        self.addCleanup(shutil.rmtree, store_dir)
+        patcher = unittest.mock.patch.dict(
+            os.environ, {blobstore.CONFIG_ENV: config})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return store_file, os.path.join(store_dir, 'tools')
+
+    def testBlobFetchCmdFiles(self):
+        """Test fetching a blob type which lists its files"""
+        store_file, tooldir = self._SetupBlobStore()
+        with terminal.capture() as (stdout, _):
+            with self.assertRaises(ValueError) as exc:
+                self._DoBinman('--tooldir', tooldir, 'blob', '--fetch',
+                               'test,fetched')
+        self.assertIn("Failed to fetch blob 'test,fetched'",
+                      str(exc.exception))
+        self.assertIn("'fetched.bin' cached at", stdout.getvalue())
+        self.assertIn("failed to fetch 'other.bin'", stdout.getvalue())
+
+        # With all the files present, the fetch succeeds
+        tools.write_file(os.path.join(os.path.dirname(store_file),
+                                      'other.bin'), b'other')
+        with terminal.capture():
+            self.assertEqual(0, self._DoBinman('--tooldir', tooldir, 'blob',
+                                               '--fetch', 'test,fetched'))
+        self.assertEqual(b'other', tools.read_file(os.path.join(
+            tooldir, 'blobs', 'test,fetched', '2', 'other.bin')))
 
     def testBlobAdd(self):
         """Test blob add command"""

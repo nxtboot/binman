@@ -15,7 +15,7 @@ from binman import blobstore
 from binman import fetchbase
 
 from u_boot_pylib import terminal
-from u_boot_pylib import tools
+from u_boot_pylib import tout
 
 # Format string for listing blobs
 FORMAT = '%-30.30s %-40.40s %s'
@@ -77,12 +77,18 @@ class Blob:
     def create(compatible):
         """Create a new blob handler object
 
+        A blob type with no handler can only be fetched from its stores, so is
+        handled by the Blob class itself.
+
         Args:
             compatible: Compatible string, e.g. 'arm,trusted-firmware-a'
 
         Returns:
-            A new object of the correct type (a subclass of Blob)
+            A new object of the correct type (Blob or a subclass)
         """
+        info = blobstore.get_blob_info(compatible)
+        if info is not None and not info.get('handler'):
+            return Blob(compatible, info.get('desc', ''))
         cls = Blob.find_blob_class(compatible)
         if isinstance(cls, tuple):
             raise ValueError("Cannot import blob module '%s': %s" % cls)
@@ -138,6 +144,9 @@ class Blob:
     def add_to_cache(self, filepath, version, arch, plat, filename):
         """Add a blob file to the cache
 
+        The file is copied in under a temporary name and then renamed, so that
+        another binman running at the same time never sees a partial file.
+
         Args:
             filepath: Path to the file to add
             version: Version string
@@ -151,10 +160,70 @@ class Blob:
         cache_path = self.get_cache_path(version, arch, plat, filename)
         cache_dir = os.path.dirname(cache_path)
         os.makedirs(cache_dir, exist_ok=True)
-        shutil.copy2(filepath, cache_path)
+        tmp_path = f'{cache_path}.{os.getpid()}.tmp'
+        shutil.copy2(filepath, tmp_path)
+        os.replace(tmp_path, cache_path)
         return cache_path
 
-    def fetch(self, version, arch, plat, source_only=False, no_source=False):
+    def obtain_file(self, fname):
+        """Get a file provided by this blob type, fetching it if needed
+
+        This is for blob types which list the files they provide, with the
+        version, architecture and platform given in their configuration.
+
+        Args:
+            fname: Name of the file, e.g. 'fsp_m.bin'
+
+        Returns:
+            str: Path to the file in the cache, or None if it could not be
+                fetched
+        """
+        info = blobstore.get_blob_info(self.compatible) or {}
+        version = str(info.get('version', ''))
+        arch = info.get('arch', '')
+        plat = info.get('plat', '')
+        cache_path = self.get_cache_path(version, arch, plat, fname)
+        if os.path.exists(cache_path):
+            return cache_path
+
+        result = self.fetch(version, arch, plat, fname=fname)
+        if not result:
+            return None
+        fpath, tmpdir = result
+        cache_path = self.add_to_cache(fpath, version, arch, plat, fname)
+        if tmpdir:
+            shutil.rmtree(tmpdir)
+        return cache_path
+
+    @staticmethod
+    def obtain_for_build(fname, plat=None):
+        """Get a file needed by an image, from the blob types which provide it
+
+        This is used when building an image needs a file which is not in the
+        input directories. It tries each blob type which lists the file, for
+        the platform being built, using the cache or fetching the file.
+
+        Args:
+            fname: Name of the file, e.g. 'fsp_m.bin'
+            plat: Platform being built for, or None if not known
+
+        Returns:
+            str: Path to the file, or None if no blob type could provide it
+        """
+        for compatible in blobstore.find_blobs_for_file(fname, plat):
+            try:
+                path = Blob.create(compatible).obtain_file(fname)
+            except (OSError, ValueError) as exc:
+                tout.warning(f"Blob '{compatible}': cannot provide '{fname}': "
+                             f'{exc}')
+                continue
+            if path:
+                tout.info(f"Using '{path}' for '{fname}'")
+                return path
+        return None
+
+    def fetch(self, version, arch, plat, source_only=False, no_source=False,
+              fname=None):
         """Fetch a blob using available methods
 
         This tries to fetch the blob using all available methods in priority
@@ -166,6 +235,7 @@ class Blob:
             plat: Target platform
             source_only: Only try building from source
             no_source: Don't try building from source
+            fname: File to fetch, for a blob type which provides several
 
         Returns:
             tuple:
@@ -190,7 +260,7 @@ class Blob:
         for store in sorted(stores, key=lambda s: s.priority):
             if store.store_type == 'build':
                 continue
-            result = store.fetch(self.compatible, version, arch, plat)
+            result = store.fetch(self.compatible, version, arch, plat, fname)
             if result:
                 return result
 
@@ -302,9 +372,10 @@ class Blob:
 
         Args:
             compatibles: List of compatible strings to fetch
-            version: Version to fetch (required)
-            arch: Target architecture (required)
-            plat: Target platform (required)
+            version: Version to fetch (required unless the blob type lists
+                its files)
+            arch: Target architecture (likewise)
+            plat: Target platform (likewise)
             source_only: Only try building from source
             no_source: Don't try building from source
 
@@ -318,6 +389,20 @@ class Blob:
             print(col.build(col.YELLOW, f'Fetch: {compatible}'))
             try:
                 blob = Blob.create(compatible)
+
+                # A blob type which lists its files has its own version etc.
+                files = (blobstore.get_blob_info(compatible) or {}).get('files')
+                if files:
+                    for fname in files:
+                        cache_path = blob.obtain_file(fname)
+                        if cache_path:
+                            print(f"- '{fname}' cached at '{cache_path}'")
+                        else:
+                            print(col.build(col.RED,
+                                            f"- failed to fetch '{fname}'"))
+                            failed.append(f'{compatible}:{fname}')
+                    continue
+
                 result = blob.fetch(version, arch, plat, source_only, no_source)
                 if result:
                     fname, tmpdir = result
