@@ -24,6 +24,7 @@ import urllib.error
 import zlib
 
 from binman import bintool
+from binman import blobstore
 from binman import cbfs_util
 from binman import cmdline
 from binman import control
@@ -9173,6 +9174,87 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
                                'aarch64', '--plat', 'generic')
         self.assertIn("Failed to fetch blob 'unknown,blob'", str(exc.exception))
         self.assertIn('Failed: unknown,blob', stdout.getvalue())
+
+    def _SetupBlobStore(self, board=False):
+        """Set up a blob store providing fetched.bin, using a local store
+
+        This sets up blob types for the board and SoC in the root compatible
+        string of blob/fetch.dts ('test,board' and 'test,soc') and for an
+        unrelated board ('test,unused').
+
+        Args:
+            board (bool): True to have the board's blob type provide
+                fetched.bin as well as the SoC's
+
+        Returns:
+            tuple:
+                str: Directory holding the store, with board/ and soc/
+                    subdirectories
+                str: Tool directory to use, holding the blob cache
+        """
+        # Use a private directory, outside the input directory so that the
+        # file must be fetched
+        store_dir = tempfile.mkdtemp(prefix='binman-blobstore.')
+        for subdir, data in (('board', b'board blob'), ('soc', b'soc blob'),
+                             ('unused', b'unused blob')):
+            os.mkdir(os.path.join(store_dir, subdir))
+            tools.write_file(os.path.join(store_dir, subdir, 'fetched.bin'),
+                             data)
+        board_files = '[fetched.bin]' if board else '[board.bin]'
+        config = os.path.join(store_dir, 'blobstores.yaml')
+        tools.write_file(config, (
+            'stores:\n'
+            '  test-local:\n'
+            '    type: local\n'
+            '    priority: 20\n'
+            'blobs:\n'
+            '  test,board:\n'
+            '    version: 1\n'
+            f'    files: {board_files}\n'
+            '    stores:\n'
+            '      - store: test-local\n'
+            f'        pattern: {store_dir}/board/{{file}}\n'
+            '  test,soc:\n'
+            '    version: 2\n'
+            '    files: [fetched.bin, other.bin]\n'
+            '    stores:\n'
+            '      - store: test-local\n'
+            f'        pattern: {store_dir}/soc/{{file}}\n'
+            '  test,unused:\n'
+            '    version: 3\n'
+            '    files: [fetched.bin]\n'
+            '    stores:\n'
+            '      - store: test-local\n'
+            f'        pattern: {store_dir}/unused/{{file}}\n'),
+            binary=False)
+        blobstore._config = None
+        self.addCleanup(setattr, blobstore, '_config', None)
+        self.addCleanup(shutil.rmtree, store_dir)
+        patcher = unittest.mock.patch.dict(
+            os.environ, {blobstore.CONFIG_ENV: config})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return store_dir, os.path.join(store_dir, 'tools')
+
+    def testBlobFetchCmdFiles(self):
+        """Test fetching a blob type which lists its files"""
+        store_dir, tooldir = self._SetupBlobStore()
+        with terminal.capture() as (stdout, _):
+            with self.assertRaises(ValueError) as exc:
+                self._DoBinman('--tooldir', tooldir, 'blob', '--fetch',
+                               'test,soc')
+        self.assertIn("Failed to fetch blob 'test,soc'", str(exc.exception))
+        self.assertIn("'fetched.bin' cached at", stdout.getvalue())
+        self.assertIn("failed to fetch 'other.bin'", stdout.getvalue())
+
+        # With all the files present, the fetch succeeds
+        tools.write_file(os.path.join(store_dir, 'soc', 'other.bin'),
+                         b'other')
+        with terminal.capture():
+            self.assertEqual(0, self._DoBinman('--tooldir', tooldir, 'blob',
+                                               '--fetch', 'test,soc'))
+        self.assertEqual(b'other', tools.read_file(os.path.join(
+            tooldir, 'blobs', 'test,soc', '2', 'other.bin')))
 
     def testBlobAdd(self):
         """Test blob add command"""

@@ -19,6 +19,8 @@ import re
 import sys
 
 from binman import bintool
+from binman import blob
+from binman import blobstore
 from binman import cbfs_util
 from binman import elf
 from binman import entry
@@ -848,6 +850,11 @@ def Binman(args):
     tools.set_tool_paths(tool_paths or None)
     bintool.Bintool.set_tool_dir(args.tooldir)
 
+    # Images may need blobs from the cache, so set it up for all commands,
+    # keeping blobs apart from the bintools
+    blob.Blob.set_blob_dir(os.path.join(args.tooldir, 'blobs')
+                           if args.tooldir else '')
+
     if args.cmd in ['ls', 'extract', 'replace', 'tool', 'sign', 'blob']:
         try:
             tout.init(args.verbosity + 1)
@@ -883,9 +890,6 @@ def Binman(args):
                     raise ValueError("Invalid arguments to 'tool' subcommand")
 
             if args.cmd == 'blob':
-                from binman import blob
-                # Keep blobs apart from the bintools
-                blob.Blob.set_blob_dir(os.path.join(args.tooldir, 'blobs'))
                 if args.list:
                     blob.Blob.list_all()
                 elif args.list_stores:
@@ -893,15 +897,19 @@ def Binman(args):
                 elif args.info:
                     blob.Blob.show_info(args.info)
                 elif args.fetch:
-                    if not args.version:
-                        raise ValueError(
-                            "Please specify --version for fetch")
-                    if not args.arch:
-                        raise ValueError(
-                            "Please specify --arch for fetch")
-                    if not args.plat:
-                        raise ValueError(
-                            "Please specify --plat for fetch")
+                    # A blob type which lists its files has its own version,
+                    # architecture and platform
+                    info = blobstore.get_blob_info(args.fetch) or {}
+                    if not info.get('files'):
+                        if not args.version:
+                            raise ValueError(
+                                "Please specify --version for fetch")
+                        if not args.arch:
+                            raise ValueError(
+                                "Please specify --arch for fetch")
+                        if not args.plat:
+                            raise ValueError(
+                                "Please specify --plat for fetch")
                     if not blob.Blob.fetch_blobs([args.fetch], args.version,
                                                  args.arch, args.plat,
                                                  args.source_only,
