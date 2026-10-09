@@ -388,7 +388,8 @@ class TestFunctional(unittest.TestCase):
                     use_expanded=False, verbosity=None, allow_missing=False,
                     allow_fake_blobs=False, extra_indirs=None, threads=None,
                     test_section_timeout=False, update_fdt_in_elf=None,
-                    force_missing_bintools='', ignore_missing=False, output_dir=None):
+                    force_missing_bintools='', ignore_missing=False, output_dir=None,
+                    tooldir=None):
         """Run binman with a given test file
 
         Args:
@@ -422,6 +423,8 @@ class TestFunctional(unittest.TestCase):
             ignore_missing (bool): True to return success even if there are
                 missing blobs or bintools
             output_dir: Specific output directory to use for image using -O
+            tooldir: Tool directory to use (--tooldir), e.g. to keep fetched
+                blobs out of the user's own
 
         Returns:
             int return code, 0 on success
@@ -440,6 +443,8 @@ class TestFunctional(unittest.TestCase):
             args.append('-T%d' % threads)
         if test_section_timeout:
             args.append('--test-section-timeout')
+        if tooldir:
+            args += ['--tooldir', tooldir]
         args += ['build', '-p', '-I', self._indir, '-d', self.TestFile(fname)]
         if map:
             args.append('-m')
@@ -521,7 +526,7 @@ class TestFunctional(unittest.TestCase):
     def _DoReadFileDtb(self, fname, use_real_dtb=False, use_expanded=False,
                        verbosity=None, allow_fake_blobs=True, map=False,
                        update_dtb=False, entry_args=None, reset_dtbs=True,
-                       extra_indirs=None, threads=None):
+                       extra_indirs=None, threads=None, tooldir=None):
         """Run binman and return the resulting image
 
         This runs binman with a given test file and then reads the resulting
@@ -552,6 +557,8 @@ class TestFunctional(unittest.TestCase):
             extra_indirs: Extra input directories to add using -I
             threads: Number of threads to use (None for default, 0 for
                 single-threaded)
+            tooldir: Tool directory to use (--tooldir), e.g. to keep fetched
+                blobs out of the user's own
 
         Returns:
             Tuple:
@@ -578,7 +585,7 @@ class TestFunctional(unittest.TestCase):
                     entry_args=entry_args, use_real_dtb=use_real_dtb,
                     use_expanded=use_expanded, verbosity=verbosity,
                     allow_fake_blobs=allow_fake_blobs, extra_indirs=extra_indirs,
-                    threads=threads)
+                    threads=threads, tooldir=tooldir)
             self.assertEqual(0, retcode)
             out_dtb_fname = tools.get_output_filename('u-boot.dtb.out')
 
@@ -9214,6 +9221,34 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
         patcher.start()
         self.addCleanup(patcher.stop)
         return store_file, os.path.join(store_dir, 'tools')
+
+    def testBlobFetchForBuild(self):
+        """Test that a build fetches a missing external blob"""
+        store_file, tooldir = self._SetupBlobStore()
+        data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir)[0]
+        self.assertEqual(b'fetched blob', data)
+        cached = os.path.join(tooldir, 'blobs', 'test,fetched', '2',
+                              'fetched.bin')
+        self.assertEqual(b'fetched blob', tools.read_file(cached))
+
+        # A second build uses the cache, without the store
+        os.remove(store_file)
+        data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir)[0]
+        self.assertEqual(b'fetched blob', data)
+
+    def testBlobFetchForBuildPlat(self):
+        """Test that a blob type for a platform is only used for that one"""
+        _, tooldir = self._SetupBlobStore(plat='myboard')
+        with terminal.capture() as (_, stderr):
+            ret = self._DoTestFile('blob/fetch.dts', tooldir=tooldir,
+                                   allow_missing=True,
+                                   entry_args={'blob-plat': 'other'})
+        self.assertEqual(103, ret)
+        self.assertIn('Missing blob', stderr.getvalue())
+
+        data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir,
+                                   entry_args={'blob-plat': 'myboard'})[0]
+        self.assertEqual(b'fetched blob', data)
 
     def testBlobFetchCmdFiles(self):
         """Test fetching a blob type which lists its files"""
