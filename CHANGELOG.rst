@@ -14,6 +14,11 @@ Added
   Trusted Firmware, preferring to build them from source. Fetched blobs are
   cached in the ``blobs`` subdirectory of the tool directory. See 'Fetching
   firmware blobs' in the documentation.
+- Building an image fetches any external blobs it needs which are not in the
+  input directories, from the blob types which provide them. Blob stores and
+  blob types, such as a private server holding a board's blobs, can be set up
+  in ``~/.config/binman/blobstores.yaml`` or in files listed in
+  ``BINMAN_BLOBSTORES``
 
 0.1.1 - 2026-10-04
 ------------------

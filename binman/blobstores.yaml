@@ -13,9 +13,14 @@
 #   local - copy from a local file, given by the 'pattern' of each blob
 #   url   - download the file at the URL given by the 'pattern' of each blob
 #           (or by 'repo' followed by the pattern, if the pattern is relative)
-# Patterns may contain {version}, {arch} and {plat}, which are replaced with
-# the values requested. A url or local store must provide the blob file
-# itself, since archives are not unpacked. For example:
+# Patterns may contain {version}, {arch}, {plat} and {file}, which are replaced
+# with the values requested. A url or local store must provide the blob file
+# itself, since archives are not unpacked.
+#
+# Further stores and blob types, such as a private server, can be added in
+# ~/.config/binman/blobstores.yaml or in files listed in $BINMAN_BLOBSTORES,
+# rather than here. See 'Fetching firmware blobs' in the documentation. For
+# example:
 #
 #   stores:
 #     my-mirror:

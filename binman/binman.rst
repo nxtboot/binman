@@ -1683,14 +1683,24 @@ To put a blob which you have obtained some other way into the cache, use::
     binman blob --add arm,trusted-firmware-a --file bl31.bin --version 2.12 \
         --arch aarch64 --plat rk3399
 
-Binman does not yet use the cache when building an image, so pass the blob's
-directory with ``-I`` (or put it in ``BINMAN_INDIRS``, see `External blobs`_).
+Building an image also uses blobs. When an image needs an external blob which
+is not in the input directories (see `External blobs`_), binman looks for a
+blob type which provides that file (see `Blobs for a board`_) and uses the file
+from the cache, fetching it first if needed. If no blob type provides the file,
+or it cannot be fetched, the blob is missing as usual.
 
 Blob stores
 -----------
 
 The blob types and stores are described in ``blobstores.yaml`` in the binman
-package. A store has a type, a priority and a description:
+package, followed by the user's own configuration, so that, for example, a
+private server can be used without changing binman. Binman reads
+``~/.config/binman/blobstores.yaml``, if it exists, then any files listed in the
+``BINMAN_BLOBSTORES`` environment variable, separated by ``:``. Each file has
+the same format and adds stores and blob types, replacing any with the same
+name.
+
+A store has a type, a priority and a description:
 
 build
     Build from source, using the blob type's handler
@@ -1723,6 +1733,52 @@ archives. For example, to fetch TF-A from a mirror of prebuilt binaries::
           - store: source-build
           - store: my-mirror
             pattern: tf-a/{version}/{plat}/bl31.bin
+
+Blobs for a board
+-----------------
+
+A board often needs several blobs, such as the FSP, flash descriptor and video
+BIOS table on an x86 board, which may only be available privately. A blob type
+can list the files it provides, with the version (and optionally architecture)
+to fetch. The ``{file}`` placeholder in a store's pattern is replaced with the
+filename. A blob type with no handler is only fetched from its stores, so no
+code is needed. For example, to provide the blobs for Chromebook Coral from a
+private server::
+
+    stores:
+      lab-server:
+        type: url
+        repo: https://blobs.example.com
+        priority: 50
+        desc: Lab blob server
+
+    blobs:
+      google,chromebook-coral:
+        desc: Chromebook Coral firmware blobs
+        version: '1'
+        plat: chromebook_coral
+        files: [descriptor.bin, fitimage.bin, fsp_m.bin, fsp_s.bin, vbt.bin]
+        stores:
+          - store: lab-server
+            pattern: coral/{version}/{file}
+
+The server then just serves the files, e.g. at
+``https://blobs.example.com/coral/1/fsp_m.bin``, giving an HTTP error for a file
+which does not exist. Change the version when the blobs change, so that they
+are fetched afresh rather than taken from the cache.
+
+The optional ``plat`` restricts the blob type to one platform (board), since
+different boards use the same filenames for different blobs. Binman takes the
+platform being built for from the ``blob-plat`` entry argument (``-a
+blob-plat=<board>``). A blob type without ``plat`` is used for any board.
+
+To fetch all the files of such a blob type in advance, for example to fill the
+cache, use::
+
+    binman blob --fetch google,chromebook-coral
+
+The files are cached under the blob type's version and platform, e.g.
+``~/.binman-tools/blobs/google,chromebook-coral/1/chromebook_coral/fsp_m.bin``
 
 Adding a blob type
 ------------------
