@@ -201,28 +201,4 @@ controlled by a description in the board device tree.'''
         help='fetch a bintool from a known location (or: all/missing)')
     tool_parser.add_argument('bintools', type=str, nargs='*')
 
-    blob_parser = subparsers.add_parser('blob', help='Manage firmware blobs')
-    blob_parser.add_argument('-l', '--list', action='store_true',
-                             help='List all known blob types')
-    blob_parser.add_argument('--list-stores', action='store_true',
-                             help='List all configured blob stores')
-    blob_parser.add_argument('--info', type=str, metavar='COMPATIBLE',
-                             help='Show info about a specific blob type')
-    blob_parser.add_argument('-f', '--fetch', type=str, metavar='COMPATIBLE',
-                             help='Fetch a blob by compatible string')
-    blob_parser.add_argument('--add', type=str, metavar='COMPATIBLE',
-                             help='Add a blob file to the cache')
-    blob_parser.add_argument('--file', type=str,
-                             help='Input file path (for --add)')
-    blob_parser.add_argument('--version', type=str,
-                             help='Version string for the blob')
-    blob_parser.add_argument('--arch', type=str,
-                             help='Target architecture (e.g. aarch64)')
-    blob_parser.add_argument('--plat', type=str,
-                             help='Target platform (e.g. sun50i_a64)')
-    blob_parser.add_argument('--source-only', action='store_true',
-                             help='Only try building from source')
-    blob_parser.add_argument('--no-source', action='store_true',
-                             help="Don't try building from source")
-
     return parser.parse_args(argv)

@@ -107,8 +107,8 @@ class Entry_intel_ifwi(Entry_blob_ext):
         After that we delete the OBBP sub-partition and add each of the files
         that we want in the IFWI file, one for each sub-entry of the IWFI node.
         """
-        self._pathname = self.find_input_file(self._filename,
-                                              self.section.GetAllowMissing())
+        self._pathname = tools.get_input_filename(self._filename,
+                                                self.section.GetAllowMissing())
         # Allow the file to be missing
         if not self._pathname:
             self.SetContents(b'')
