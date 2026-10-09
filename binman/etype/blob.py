@@ -5,7 +5,6 @@
 # Entry-type module for blobs, which are binary objects read from files
 #
 
-from binman import blob as blob_fetch
 from binman.entry import Entry
 from binman import state
 from dtoc import fdt_util
@@ -43,39 +42,9 @@ class Entry_blob(Entry):
             if fdt_util.GetBool(self._node, 'write-symbols'):
                 self.auto_write_symbols = True
 
-    def find_input_file(self, fname, allow_missing):
-        """Find an input file, fetching an external blob if needed
-
-        An external blob which is not in the input directories may be
-        provided by a blob type (see 'Fetching firmware blobs' in the
-        documentation), from the blob cache or a blob store. The platform
-        being built for is given by the 'blob-plat' entry argument.
-
-        Args:
-            fname (str): Filename to find
-            allow_missing (bool): True if the file may be missing
-
-        Returns:
-            str: Path to the file, or None if it is missing and allowed to be
-
-        Raises:
-            ValueError: The file is missing and that is not allowed
-        """
-        if not self.external:
-            return tools.get_input_filename(fname, allow_missing)
-        pathname = tools.get_input_filename(fname, True)
-        if not pathname:
-            pathname = blob_fetch.Blob.obtain_for_build(
-                fname, state.GetEntryArg('blob-plat'))
-        if not pathname and not allow_missing:
-            # Report the missing file in the usual way
-            tools.get_input_filename(fname)
-        return pathname
-
     def ObtainContents(self, fake_size: int = 0) -> bool:
         self._filename = self.GetDefaultFilename()
-        self._pathname = self.find_input_file(
-            self._filename,
+        self._pathname = tools.get_input_filename(self._filename,
             self.external and (self.optional or self.section.GetAllowMissing()))
         # Allow the file to be missing
         if not self._pathname:

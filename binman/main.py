@@ -41,7 +41,6 @@ def RunTests(debug, verbosity, processes, test_preserve_dirs, args, toolpath):
         toolpath: List of paths to use for tools
     """
     from binman import bintool_test
-    from binman import blob_test
     from binman import cbfs_util_test
     from binman import elf_test
     from binman import entry_test
@@ -49,13 +48,7 @@ def RunTests(debug, verbosity, processes, test_preserve_dirs, args, toolpath):
     from binman import fip_util_test
     from binman import ftest
     from binman import image_test
-    from binman import blobstore
     import doctest
-
-    # Keep the tests away from the user's blob configuration, so that it does
-    # not affect them. Tests which need a configuration provide their own
-    blobstore.USER_CONFIG = '/nonexistent/blobstores.yaml'
-    os.environ.pop(blobstore.CONFIG_ENV, None)
 
     test_name = args and args[0] or None
 
@@ -64,9 +57,7 @@ def RunTests(debug, verbosity, processes, test_preserve_dirs, args, toolpath):
     result = test_util.run_test_suites(
         'binman', debug, verbosity, False, test_preserve_dirs, processes,
         test_name, toolpath,
-        [bintool_test.TestBintool, blob_test.TestBlob, blob_test.TestBlobFunctional,
-         blob_test.TestBlobFiles, blob_test.TestBlobYamlConfig,
-         entry_test.TestEntry, ftest.TestFunctional,
+        [bintool_test.TestBintool, entry_test.TestEntry, ftest.TestFunctional,
          fdt_test.TestFdt, elf_test.TestElf, image_test.TestImage,
          cbfs_util_test.TestCbfs, fip_util_test.TestFip])
 
