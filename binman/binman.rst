@@ -1672,11 +1672,15 @@ the blob's other stores in priority order, lowest number first. Use
 ``--source-only`` to only build from source, or ``--no-source`` to skip
 building. Binman exits with an error if the blob cannot be fetched.
 
-Fetched blobs are cached in the ``blobs`` subdirectory of the tool directory
-(see `Bintools`_), under the compatible string, version, architecture and
-platform, e.g.::
+Fetched blobs are cached in ``~/.cache/binman/blobs``, under the compatible
+string, version, architecture and platform, e.g.::
 
-    ~/.binman-tools/blobs/arm,trusted-firmware-a/2.12/aarch64/rk3399/bl31.bin
+    ~/.cache/binman/blobs/arm,trusted-firmware-a/2.12/aarch64/rk3399/bl31.bin
+
+If ``XDG_CACHE_HOME`` is set, the cache is in ``$XDG_CACHE_HOME/binman/blobs``
+instead. Use the ``--blob-dir`` option or the ``BINMAN_BLOB_DIR`` environment
+variable to choose a different directory, for example one which is shared by
+several users or kept between CI runs.
 
 To put a blob which you have obtained some other way into the cache, use::
 
@@ -1686,8 +1690,8 @@ To put a blob which you have obtained some other way into the cache, use::
 Building an image also uses blobs. When an image needs an external blob which
 is not in the input directories (see `External blobs`_), binman looks for a
 blob type which provides that file for the board (see `Blobs for a board`_) and
-uses the file from the cache, fetching it first if needed. If no blob type provides the file,
-or it cannot be fetched, the blob is missing as usual.
+uses the file from the cache, fetching it first if needed. If no blob type
+provides the file, or it cannot be fetched, the blob is missing as usual.
 
 Blob stores
 -----------
@@ -1789,7 +1793,7 @@ cache, use::
     binman blob --fetch google,coral
 
 The files are cached under the blob type and version, e.g.
-``~/.binman-tools/blobs/google,coral/1/vbt.bin``
+``~/.cache/binman/blobs/google,coral/1/vbt.bin``
 
 Adding a blob type
 ------------------
@@ -1807,7 +1811,8 @@ Binman commands and arguments
 Usage::
 
     binman [-h] [-B BUILD_DIR] [-D] [--tooldir TOOLDIR] [-H]
-        [--toolpath TOOLPATH] [-T THREADS] [--test-section-timeout]
+        [--toolpath TOOLPATH] [--blob-dir BLOB_DIR] [-T THREADS]
+        [--test-section-timeout]
         [-v VERBOSITY] [-V]
         {build,bintool-docs,entry-docs,ls,extract,replace,sign,test,tool,blob}
         ...
@@ -1843,6 +1848,10 @@ Options:
 
 --toolpath TOOLPATH
     Add a path to the list of directories containing tools
+
+--blob-dir BLOB_DIR
+    Set the directory to cache blobs in (default ``$BINMAN_BLOB_DIR`` or
+    ``~/.cache/binman/blobs``). See `Fetching firmware blobs`_.
 
 -T THREADS, --threads THREADS
     Number of threads to use (0=single-thread). Note that -T0 is useful for

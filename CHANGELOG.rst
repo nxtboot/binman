@@ -12,8 +12,9 @@ Added
 ~~~~~
 - ``binman blob`` fetches firmware blobs, such as the BL31 image from ARM
   Trusted Firmware, preferring to build them from source. Fetched blobs are
-  cached in the ``blobs`` subdirectory of the tool directory. See 'Fetching
-  firmware blobs' in the documentation.
+  cached in ``~/.cache/binman/blobs``, which can be changed with
+  ``--blob-dir`` or ``BINMAN_BLOB_DIR``. See 'Fetching firmware blobs' in the
+  documentation.
 - Building an image fetches any external blobs it needs which are not in the
   input directories, from blob types which provide them for the board. These
   are matched by the compatible strings of the devicetree root node, so a

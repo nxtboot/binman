@@ -10,7 +10,9 @@
 """See README for more information"""
 
 import os
+import shutil
 import sys
+import tempfile
 import traceback
 
 # Allow running directly from a checkout ('python3 binman/main.py'), so that
@@ -49,6 +51,7 @@ def RunTests(debug, verbosity, processes, test_preserve_dirs, args, toolpath):
     from binman import fip_util_test
     from binman import ftest
     from binman import image_test
+    from binman import blob
     from binman import blobstore
     import doctest
 
@@ -57,18 +60,26 @@ def RunTests(debug, verbosity, processes, test_preserve_dirs, args, toolpath):
     blobstore.USER_CONFIG = '/nonexistent/blobstores.yaml'
     os.environ.pop(blobstore.CONFIG_ENV, None)
 
+    # Likewise keep any blobs fetched by the tests out of the user's cache
+    blob_dir = tempfile.mkdtemp(prefix='binman.blobs.')
+    os.environ[blob.BLOB_DIR_ENV] = blob_dir
+
     test_name = args and args[0] or None
 
     # Run the entry tests first ,since these need to be the first to import the
     # 'entry' module.
-    result = test_util.run_test_suites(
-        'binman', debug, verbosity, False, test_preserve_dirs, processes,
-        test_name, toolpath,
-        [bintool_test.TestBintool, blob_test.TestBlob, blob_test.TestBlobFunctional,
-         blob_test.TestBlobFiles, blob_test.TestBlobYamlConfig,
-         entry_test.TestEntry, ftest.TestFunctional,
-         fdt_test.TestFdt, elf_test.TestElf, image_test.TestImage,
-         cbfs_util_test.TestCbfs, fip_util_test.TestFip])
+    try:
+        result = test_util.run_test_suites(
+            'binman', debug, verbosity, False, test_preserve_dirs, processes,
+            test_name, toolpath,
+            [bintool_test.TestBintool, blob_test.TestBlob,
+             blob_test.TestBlobFunctional, blob_test.TestBlobFiles,
+             blob_test.TestBlobYamlConfig, entry_test.TestEntry,
+             ftest.TestFunctional, fdt_test.TestFdt, elf_test.TestElf,
+             image_test.TestImage, cbfs_util_test.TestCbfs,
+             fip_util_test.TestFip])
+    finally:
+        shutil.rmtree(blob_dir)
 
     return (0 if result.wasSuccessful() else 1)
 

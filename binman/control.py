@@ -850,10 +850,8 @@ def Binman(args):
     tools.set_tool_paths(tool_paths or None)
     bintool.Bintool.set_tool_dir(args.tooldir)
 
-    # Images may need blobs from the cache, so set it up for all commands,
-    # keeping blobs apart from the bintools
-    blob.Blob.set_blob_dir(os.path.join(args.tooldir, 'blobs')
-                           if args.tooldir else '')
+    # Images may need blobs from the cache, so set it up for all commands
+    blob.Blob.set_blob_dir(blob.get_blob_dir(args.blob_dir))
 
     if args.cmd in ['ls', 'extract', 'replace', 'tool', 'sign', 'blob']:
         try:

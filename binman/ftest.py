@@ -389,7 +389,7 @@ class TestFunctional(unittest.TestCase):
                     allow_fake_blobs=False, extra_indirs=None, threads=None,
                     test_section_timeout=False, update_fdt_in_elf=None,
                     force_missing_bintools='', ignore_missing=False, output_dir=None,
-                    tooldir=None):
+                    blob_dir=None):
         """Run binman with a given test file
 
         Args:
@@ -423,8 +423,8 @@ class TestFunctional(unittest.TestCase):
             ignore_missing (bool): True to return success even if there are
                 missing blobs or bintools
             output_dir: Specific output directory to use for image using -O
-            tooldir: Tool directory to use (--tooldir), e.g. to keep fetched
-                blobs out of the user's own
+            blob_dir: Directory to cache blobs in (--blob-dir), to keep
+                fetched blobs out of the user's own
 
         Returns:
             int return code, 0 on success
@@ -443,8 +443,8 @@ class TestFunctional(unittest.TestCase):
             args.append('-T%d' % threads)
         if test_section_timeout:
             args.append('--test-section-timeout')
-        if tooldir:
-            args += ['--tooldir', tooldir]
+        if blob_dir:
+            args += ['--blob-dir', blob_dir]
         args += ['build', '-p', '-I', self._indir, '-d', self.TestFile(fname)]
         if map:
             args.append('-m')
@@ -526,7 +526,7 @@ class TestFunctional(unittest.TestCase):
     def _DoReadFileDtb(self, fname, use_real_dtb=False, use_expanded=False,
                        verbosity=None, allow_fake_blobs=True, map=False,
                        update_dtb=False, entry_args=None, reset_dtbs=True,
-                       extra_indirs=None, threads=None, tooldir=None):
+                       extra_indirs=None, threads=None, blob_dir=None):
         """Run binman and return the resulting image
 
         This runs binman with a given test file and then reads the resulting
@@ -557,8 +557,8 @@ class TestFunctional(unittest.TestCase):
             extra_indirs: Extra input directories to add using -I
             threads: Number of threads to use (None for default, 0 for
                 single-threaded)
-            tooldir: Tool directory to use (--tooldir), e.g. to keep fetched
-                blobs out of the user's own
+            blob_dir: Directory to cache blobs in (--blob-dir), to keep
+                fetched blobs out of the user's own
 
         Returns:
             Tuple:
@@ -585,7 +585,7 @@ class TestFunctional(unittest.TestCase):
                     entry_args=entry_args, use_real_dtb=use_real_dtb,
                     use_expanded=use_expanded, verbosity=verbosity,
                     allow_fake_blobs=allow_fake_blobs, extra_indirs=extra_indirs,
-                    threads=threads, tooldir=tooldir)
+                    threads=threads, blob_dir=blob_dir)
             self.assertEqual(0, retcode)
             out_dtb_fname = tools.get_output_filename('u-boot.dtb.out')
 
@@ -9156,8 +9156,8 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
 
         # Use a private tool directory, so the blob is not cached in the
         # user's one
-        tooldir = os.path.join(self._indir, 'tools')
-        args = ['--tooldir', tooldir, 'blob', '--fetch',
+        blob_dir = os.path.join(self._indir, 'blobs')
+        args = ['--blob-dir', blob_dir, 'blob', '--fetch',
                 'arm,trusted-firmware-a', '--version', '2.9', '--arch',
                 'aarch64', '--plat', 'sun50i_a64']
         try:
@@ -9168,15 +9168,15 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
         finally:
             command.TEST_RESULT = None
         self.assertEqual(b'bl31', tools.read_file(os.path.join(
-            tooldir, 'blobs', 'arm,trusted-firmware-a', '2.9', 'aarch64', 'sun50i_a64',
+            blob_dir, 'arm,trusted-firmware-a', '2.9', 'aarch64', 'sun50i_a64',
             'bl31.bin')))
 
     def testBlobFetchFails(self):
         """Test that a failed blob fetch is reported as an error"""
-        tooldir = os.path.join(self._indir, 'tools')
+        blob_dir = os.path.join(self._indir, 'blobs')
         with self.assertRaises(ValueError) as exc:
             with terminal.capture() as (stdout, _):
-                self._DoBinman('--tooldir', tooldir, 'blob', '--fetch',
+                self._DoBinman('--blob-dir', blob_dir, 'blob', '--fetch',
                                'unknown,blob', '--version', '1.0', '--arch',
                                'aarch64', '--plat', 'generic')
         self.assertIn("Failed to fetch blob 'unknown,blob'", str(exc.exception))
@@ -9197,7 +9197,7 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
             tuple:
                 str: Directory holding the store, with board/ and soc/
                     subdirectories
-                str: Tool directory to use, holding the blob cache
+                str: Directory to cache blobs in
         """
         # Use a private directory, outside the input directory so that the
         # file must be fetched
@@ -9241,48 +9241,46 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
             os.environ, {blobstore.CONFIG_ENV: config})
         patcher.start()
         self.addCleanup(patcher.stop)
-        return store_dir, os.path.join(store_dir, 'tools')
+        return store_dir, os.path.join(store_dir, 'cache')
 
     def testBlobFetchForBuild(self):
         """Test that a build fetches a missing external blob for the SoC"""
-        store_dir, tooldir = self._SetupBlobStore()
-        data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir)[0]
+        store_dir, blob_dir = self._SetupBlobStore()
+        data = self._DoReadFileDtb('blob/fetch.dts', blob_dir=blob_dir)[0]
         self.assertEqual(b'soc blob', data)
 
         # The file is cached by blob type and version
-        cached = os.path.join(tooldir, 'blobs', 'test,soc', '2',
-                              'fetched.bin')
+        cached = os.path.join(blob_dir, 'test,soc', '2', 'fetched.bin')
         self.assertEqual(b'soc blob', tools.read_file(cached))
 
         # A second build uses the cache, without the store
         os.remove(os.path.join(store_dir, 'soc', 'fetched.bin'))
-        data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir)[0]
+        data = self._DoReadFileDtb('blob/fetch.dts', blob_dir=blob_dir)[0]
         self.assertEqual(b'soc blob', data)
 
     def testBlobFetchForBuildBoard(self):
         """Test that the board's blob type wins over the SoC's"""
-        _, tooldir = self._SetupBlobStore(board=True)
-        data = self._DoReadFileDtb('blob/fetch.dts', tooldir=tooldir)[0]
+        _, blob_dir = self._SetupBlobStore(board=True)
+        data = self._DoReadFileDtb('blob/fetch.dts', blob_dir=blob_dir)[0]
         self.assertEqual(b'board blob', data)
-        self.assertFalse(os.path.exists(os.path.join(tooldir, 'blobs',
-                                                     'test,soc')))
+        self.assertFalse(os.path.exists(os.path.join(blob_dir, 'test,soc')))
 
     def testBlobFetchForBuildOtherBoard(self):
         """Test that blob types are not used for other boards"""
-        _, tooldir = self._SetupBlobStore(board=True)
+        _, blob_dir = self._SetupBlobStore(board=True)
         with terminal.capture() as (_, stderr):
-            ret = self._DoTestFile('blob/fetch_other.dts', tooldir=tooldir,
+            ret = self._DoTestFile('blob/fetch_other.dts', blob_dir=blob_dir,
                                    allow_missing=True)
         self.assertEqual(103, ret)
         self.assertIn('Missing blob', stderr.getvalue())
-        self.assertFalse(os.path.exists(os.path.join(tooldir, 'blobs')))
+        self.assertFalse(os.path.exists(blob_dir))
 
     def testBlobFetchCmdFiles(self):
         """Test fetching a blob type which lists its files"""
-        store_dir, tooldir = self._SetupBlobStore()
+        store_dir, blob_dir = self._SetupBlobStore()
         with terminal.capture() as (stdout, _):
             with self.assertRaises(ValueError) as exc:
-                self._DoBinman('--tooldir', tooldir, 'blob', '--fetch',
+                self._DoBinman('--blob-dir', blob_dir, 'blob', '--fetch',
                                'test,soc')
         self.assertIn("Failed to fetch blob 'test,soc'", str(exc.exception))
         self.assertIn("'fetched.bin' cached at", stdout.getvalue())
@@ -9292,25 +9290,25 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
         tools.write_file(os.path.join(store_dir, 'soc', 'other.bin'),
                          b'other')
         with terminal.capture():
-            self.assertEqual(0, self._DoBinman('--tooldir', tooldir, 'blob',
+            self.assertEqual(0, self._DoBinman('--blob-dir', blob_dir, 'blob',
                                                '--fetch', 'test,soc'))
         self.assertEqual(b'other', tools.read_file(os.path.join(
-            tooldir, 'blobs', 'test,soc', '2', 'other.bin')))
+            blob_dir, 'test,soc', '2', 'other.bin')))
 
     def testBlobAdd(self):
         """Test blob add command"""
         test_file = os.path.join(self._indir, 'blob_add_test.bin')
         tools.write_file(test_file, b'test blob data')
 
-        tooldir = os.path.join(self._indir, 'tools')
-        args = ['--tooldir', tooldir, 'blob', '--add', 'test,added', '--file',
+        blob_dir = os.path.join(self._indir, 'blobs')
+        args = ['--blob-dir', blob_dir, 'blob', '--add', 'test,added', '--file',
                 test_file, '--version', '1.0', '--arch', 'aarch64', '--plat',
                 'generic']
         with terminal.capture() as (stdout, _):
             self._DoBinman(*args)
         self.assertIn('Added', stdout.getvalue())
         self.assertEqual(b'test blob data', tools.read_file(os.path.join(
-            tooldir, 'blobs', 'test,added', '1.0', 'aarch64', 'generic',
+            blob_dir, 'test,added', '1.0', 'aarch64', 'generic',
             'blob_add_test.bin')))
 
 if __name__ == "__main__":

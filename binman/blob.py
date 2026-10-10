@@ -23,10 +23,41 @@ FORMAT = '%-30.30s %-40.40s %s'
 # List of known modules, to avoid importing the module multiple times
 modules = {}
 
+# Environment variable giving the directory to cache blobs in
+BLOB_DIR_ENV = 'BINMAN_BLOB_DIR'
+
 # Priorities for different fetch sources
 PRIORITY_BUILD = 10    # Building from source (highest priority - open source)
 PRIORITY_LOCAL = 20    # Local directories
 PRIORITY_URL = 50      # URL downloads (lowest priority)
+
+
+def user_cache_dir(subdir):
+    """Get a directory in the user's cache for binman
+
+    This is ~/.cache/binman/<subdir>, or under $XDG_CACHE_HOME if set.
+
+    Args:
+        subdir (str): Subdirectory within binman's cache directory
+
+    Returns:
+        str: Path to the directory
+    """
+    base = os.environ.get('XDG_CACHE_HOME') or os.path.expanduser('~/.cache')
+    return os.path.join(base, 'binman', subdir)
+
+
+def get_blob_dir(option=None):
+    """Get the directory to cache blobs in
+
+    Args:
+        option (str): Directory given by the user (--blob-dir), or None
+
+    Returns:
+        str: The directory: the option if given, else $BINMAN_BLOB_DIR, else
+            ~/.cache/binman/blobs
+    """
+    return option or os.environ.get(BLOB_DIR_ENV) or user_cache_dir('blobs')
 
 
 class Blob:

@@ -48,6 +48,18 @@ class TestBlob(unittest.TestCase):
                                'sun50i', 'bl31.bin')
         self.assertEqual(expected, path)
 
+    def test_blob_dir(self):
+        """Test selecting the directory to cache blobs in"""
+        home = os.path.expanduser('~')
+        with unittest.mock.patch.dict(os.environ, clear=True):
+            self.assertEqual(os.path.join(home, '.cache', 'binman', 'blobs'),
+                             blob.get_blob_dir())
+            os.environ['XDG_CACHE_HOME'] = '/xdg'
+            self.assertEqual('/xdg/binman/blobs', blob.get_blob_dir())
+            os.environ[blob.BLOB_DIR_ENV] = '/env'
+            self.assertEqual('/env', blob.get_blob_dir())
+            self.assertEqual('/opt', blob.get_blob_dir('/opt'))
+
     def test_is_cached_not_exists(self):
         """Test is_cached returns False when file does not exist"""
         b = Blob('test,blob', 'test blob')

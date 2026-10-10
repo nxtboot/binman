@@ -89,6 +89,9 @@ controlled by a description in the board device tree.'''
         help='Set the directory to store tools')
     parser.add_argument('--toolpath', type=str, action='append',
         help='Add a path to the list of directories containing tools')
+    parser.add_argument('--blob-dir', type=str,
+        help='Set the directory to cache blobs in (default '
+             '$BINMAN_BLOB_DIR or ~/.cache/binman/blobs)')
     parser.add_argument('-T', '--threads', type=int,
           default=None, help='Number of threads to use (0=single-thread)')
     parser.add_argument('--test-section-timeout', action='store_true',
