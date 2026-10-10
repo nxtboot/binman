@@ -8,6 +8,9 @@ the project follows `Semantic Versioning <https://semver.org/>`_.
 Unreleased
 ----------
 
+0.1.2 - 2026-10-10
+------------------
+
 Added
 ~~~~~
 - ``binman blob`` fetches firmware blobs, such as the BL31 image from ARM
