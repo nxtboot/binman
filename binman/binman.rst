@@ -1672,6 +1672,23 @@ the blob's other stores in priority order, lowest number first. Use
 ``--source-only`` to only build from source, or ``--no-source`` to skip
 building. Binman exits with an error if the blob cannot be fetched.
 
+Blobs are built in ``~/.cache/binman/blob-build``, or under ``XDG_CACHE_HOME``
+if that is set, with a directory for each git repository. This holds the
+repository in ``src``, with a working tree for each version which is built,
+e.g.::
+
+    ~/.cache/binman/blob-build/trusted-firmware-a-1a2b3c4d/v2.12
+
+The build is kept, so building the same version again reuses it, which is
+faster and does not need to fetch the source again. If a build fails, binman
+says where it is, so that you can look at what went wrong. Use the
+``--blob-build-dir`` option or the ``BINMAN_BLOB_BUILD_DIR`` environment
+variable to choose a different directory. Use ``--temp-build`` to build in a
+temporary directory which is removed afterwards, and ``--clean-builds`` to
+remove all the builds::
+
+    binman blob --clean-builds
+
 Fetched blobs are cached in ``~/.cache/binman/blobs``, under the compatible
 string, version, architecture and platform, e.g.::
 
@@ -1802,8 +1819,8 @@ Each blob type has a handler in the ``blobs/`` directory of the binman package,
 named in ``blobstores.yaml``. The handler is a module defining a class named
 ``Blob<handler>`` which is a subclass of ``Blob``. To support building from
 source, it implements ``build()``, typically using ``build_from_git()``, which
-clones a repository, runs ``make`` and returns the file which was built. See
-``blobs/atf.py`` for an example.
+checks out a repository in the build directory, runs ``make`` and returns the
+file which was built. See ``blobs/atf.py`` for an example.
 
 Binman commands and arguments
 =============================
@@ -1811,7 +1828,8 @@ Binman commands and arguments
 Usage::
 
     binman [-h] [-B BUILD_DIR] [-D] [--tooldir TOOLDIR] [-H]
-        [--toolpath TOOLPATH] [--blob-dir BLOB_DIR] [-T THREADS]
+        [--toolpath TOOLPATH] [--blob-dir BLOB_DIR]
+        [--blob-build-dir BLOB_BUILD_DIR] [-T THREADS]
         [--test-section-timeout]
         [-v VERBOSITY] [-V]
         {build,bintool-docs,entry-docs,ls,extract,replace,sign,test,tool,blob}
@@ -1852,6 +1870,10 @@ Options:
 --blob-dir BLOB_DIR
     Set the directory to cache blobs in (default ``$BINMAN_BLOB_DIR`` or
     ``~/.cache/binman/blobs``). See `Fetching firmware blobs`_.
+
+--blob-build-dir BLOB_BUILD_DIR
+    Set the directory to build blobs in (default ``$BINMAN_BLOB_BUILD_DIR`` or
+    ``~/.cache/binman/blob-build``). See `Fetching firmware blobs`_.
 
 -T THREADS, --threads THREADS
     Number of threads to use (0=single-thread). Note that -T0 is useful for

@@ -852,6 +852,7 @@ def Binman(args):
 
     # Images may need blobs from the cache, so set it up for all commands
     blob.Blob.set_blob_dir(blob.get_blob_dir(args.blob_dir))
+    blob.Blob.set_build_dir(blob.get_build_dir(args.blob_build_dir))
 
     if args.cmd in ['ls', 'extract', 'replace', 'tool', 'sign', 'blob']:
         try:
@@ -888,7 +889,11 @@ def Binman(args):
                     raise ValueError("Invalid arguments to 'tool' subcommand")
 
             if args.cmd == 'blob':
-                if args.list:
+                if args.temp_build:
+                    blob.Blob.set_build_dir(None)
+                if args.clean_builds:
+                    blob.Blob.clean_builds()
+                elif args.list:
                     blob.Blob.list_all()
                 elif args.list_stores:
                     blob.Blob.list_stores()

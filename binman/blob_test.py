@@ -32,6 +32,7 @@ class TestBlob(unittest.TestCase):
         """Set up test fixtures"""
         self._indir = tempfile.mkdtemp(prefix='blobtest.')
         Blob.set_blob_dir(self._indir)
+        Blob.set_build_dir(None)
         # Clear the config cache for each test
         blobstore._config = None
 
@@ -60,6 +61,19 @@ class TestBlob(unittest.TestCase):
             os.environ[blob.BLOB_DIR_ENV] = '/env'
             self.assertEqual('/env', blob.get_blob_dir())
             self.assertEqual('/opt', blob.get_blob_dir('/opt'))
+
+    def test_build_dir(self):
+        """Test selecting the directory to build blobs in"""
+        home = os.path.expanduser('~')
+        with unittest.mock.patch.dict(os.environ, clear=True):
+            self.assertEqual(
+                os.path.join(home, '.cache', 'binman', 'blob-build'),
+                blob.get_build_dir())
+            os.environ['XDG_CACHE_HOME'] = '/xdg'
+            self.assertEqual('/xdg/binman/blob-build', blob.get_build_dir())
+            os.environ[blob.BUILD_DIR_ENV] = '/env'
+            self.assertEqual('/env', blob.get_build_dir())
+            self.assertEqual('/opt', blob.get_build_dir('/opt'))
 
     def test_is_cached_not_exists(self):
         """Test is_cached returns False when file does not exist"""
@@ -188,6 +202,7 @@ class TestBlobFunctional(unittest.TestCase):
         """Set up test fixtures"""
         self._indir = tempfile.mkdtemp(prefix='blobfunc.')
         Blob.set_blob_dir(self._indir)
+        Blob.set_build_dir(None)
         blobstore._config = None
 
     def tearDown(self):
@@ -846,6 +861,7 @@ class TestBlobFiles(unittest.TestCase):
         self._indir = tempfile.mkdtemp(prefix='blobfiles.')
         self._blobdir = os.path.join(self._indir, 'cache')
         Blob.set_blob_dir(self._blobdir)
+        Blob.set_build_dir(None)
         blobstore._config = None
 
     def tearDown(self):
@@ -1091,6 +1107,7 @@ class TestBlobYamlConfig(unittest.TestCase):
         """Set up test with a mock YAML config"""
         self._indir = tempfile.mkdtemp(prefix='blobtest.')
         Blob.set_blob_dir(self._indir)
+        Blob.set_build_dir(None)
         # Clear the config cache
         blobstore._config = None
 
@@ -1180,6 +1197,144 @@ class TestBlobYamlConfig(unittest.TestCase):
         self.assertEqual(1, len(stores))
         self.assertEqual('test-store', stores[0].name)
         self.assertEqual(30, stores[0].priority)
+
+
+class TestBlobBuild(unittest.TestCase):
+    """Tests for building blobs from a git repository in the build directory
+
+    These use a local git repository, so do not need network access
+    """
+
+    def setUp(self):
+        """Set up a git repository and a build directory"""
+        self._indir = tempfile.mkdtemp(prefix='blobtest.')
+        self._build_dir = os.path.join(self._indir, 'build')
+        Blob.set_build_dir(self._build_dir)
+
+        # The Makefile counts how many times out.bin is built, so that tests
+        # can tell whether a build is reused
+        repo = os.path.join(self._indir, 'repo')
+        os.mkdir(repo)
+        tools.write_file(os.path.join(repo, 'Makefile'), (
+            'out.bin:\n'
+            "\tprintf '$(VAL)x' >>count\n"
+            '\tcp count out.bin\n'
+            'fail:\n'
+            '\tfalse\n'), binary=False)
+        self._git('init', '-q', '-b', 'main', repo)
+        self._git('-C', repo, 'add', 'Makefile')
+        self._git('-C', repo, 'commit', '-q', '-m', 'Add a Makefile')
+        self._git('-C', repo, 'tag', 'v1')
+        self._repo = f'file://{repo}'
+
+    def tearDown(self):
+        """Clean up"""
+        shutil.rmtree(self._indir)
+        Blob.set_build_dir(None)
+
+    @staticmethod
+    def _git(*args):
+        """Run git on the test repository
+
+        This uses a fixed identity, so that commits work anywhere, and ignores
+        any repository given by the environment, e.g. by 'git rebase --exec'
+        """
+        fetchbase.run_build('git', '-c', 'user.name=binman', '-c',
+                            'user.email=binman@example.com', *args,
+                            env=fetchbase.build_env())
+
+    def _build(self, target='out.bin', git_branch='v1'):
+        """Build out.bin from the repository
+
+        Returns:
+            tuple: Result from build_from_git(), and its output
+        """
+        with terminal.capture() as (stdout, _):
+            result = Blob.build_from_git(self._repo, [target], 'out.bin',
+                                         git_branch=git_branch,
+                                         make_flags=['VAL=1'])
+        return result, stdout.getvalue()
+
+    def test_build(self):
+        """Test that a build is kept, and reused by the next build"""
+        result, out = self._build()
+        repodir = fetchbase.get_repo_dir(self._build_dir, self._repo)
+        tree = os.path.join(repodir, 'v1')
+        self.assertEqual((os.path.join(tree, 'out.bin'), None), result)
+        self.assertEqual(b'1x', tools.read_file(result[0]))
+        self.assertIn(f"- fetch 'v1' from git repo '{self._repo}'", out)
+        self.assertTrue(os.path.basename(repodir).startswith('repo-'))
+
+        # The next build uses the same tree, so make has nothing to do
+        result, out = self._build()
+        self.assertIn(f"- use existing tree '{tree}'", out)
+        self.assertEqual(b'1x', tools.read_file(result[0]))
+
+    def test_build_relative(self):
+        """Test building in a directory given by a relative path"""
+        Blob.set_build_dir(os.path.relpath(self._build_dir))
+        result, _ = self._build()
+        repodir = fetchbase.get_repo_dir(self._build_dir, self._repo)
+        self.assertEqual(os.path.join(repodir, 'v1', 'out.bin'), result[0])
+        self.assertEqual(b'1x', tools.read_file(result[0]))
+
+    def test_build_default_branch(self):
+        """Test building the default branch"""
+        result, _ = self._build(git_branch=None)
+        repodir = fetchbase.get_repo_dir(self._build_dir, self._repo)
+        self.assertEqual(os.path.join(repodir, 'HEAD', 'out.bin'), result[0])
+
+    def test_build_git_env(self):
+        """Test that a build ignores the repository given by the environment"""
+        outer = os.path.join(self._indir, 'outer')
+        os.mkdir(outer)
+        with unittest.mock.patch.dict(os.environ, {
+                'GIT_DIR': outer, 'GIT_WORK_TREE': outer}):
+            result, _ = self._build()
+        self.assertEqual(b'1x', tools.read_file(result[0]))
+        self.assertEqual([], os.listdir(outer))
+
+    def test_build_removed_tree(self):
+        """Test building again after the tree is removed"""
+        result, _ = self._build()
+        tree = os.path.dirname(result[0])
+        shutil.rmtree(tree)
+        result, out = self._build()
+        self.assertIn("- fetch 'v1'", out)
+        self.assertEqual(b'1x', tools.read_file(result[0]))
+
+    def test_build_fails(self):
+        """Test that a failed build is left in place, saying where it is"""
+        tree = os.path.join(
+            fetchbase.get_repo_dir(self._build_dir, self._repo), 'v1')
+        with terminal.capture() as (stdout, _):
+            with self.assertRaises(ValueError):
+                Blob.build_from_git(self._repo, ['fail'], 'out.bin',
+                                    git_branch='v1')
+        self.assertIn(f"- build failed: see '{tree}'", stdout.getvalue())
+        self.assertTrue(os.path.exists(os.path.join(tree, 'Makefile')))
+
+    def test_build_no_output(self):
+        """Test a build which does not produce the file"""
+        with terminal.capture() as (stdout, _):
+            result = Blob.build_from_git(self._repo, ['out.bin'], 'other.bin',
+                                         git_branch='v1')
+        self.assertIsNone(result)
+        tree = os.path.join(
+            fetchbase.get_repo_dir(self._build_dir, self._repo), 'v1')
+        self.assertIn(f"- build left in '{tree}'", stdout.getvalue())
+
+    def test_clean_builds(self):
+        """Test removing the builds"""
+        self._build()
+        with terminal.capture() as (stdout, _):
+            Blob.clean_builds()
+        self.assertFalse(os.path.exists(self._build_dir))
+        self.assertIn(f"Removed '{self._build_dir}'", stdout.getvalue())
+
+        with terminal.capture() as (stdout, _):
+            Blob.clean_builds()
+        self.assertIn('No blob builds to remove', stdout.getvalue())
 
 
 if __name__ == '__main__':

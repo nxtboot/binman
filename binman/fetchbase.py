@@ -11,7 +11,9 @@ This module provides shared infrastructure for bintools and blobs, including:
 - Fetching from URLs
 """
 
+import fcntl
 import glob
+import hashlib
 import importlib
 import multiprocessing
 import os
@@ -83,12 +85,104 @@ def run_build(*args, env):
                          f"{result.stderr or result.stdout}")
 
 
+def _make(srcdir, make_targets, output_path, run_env, make_flags, make_path):
+    """Build a file from source with 'make'
+
+    Args:
+        srcdir: Directory containing the source
+        make_targets: List of targets to pass to 'make'
+        output_path: Relative path of the output file in srcdir after build
+        run_env: Environment to use for make, from build_env()
+        make_flags: Additional flags to pass to make, or None
+        make_path: Relative path inside srcdir containing the Makefile, or
+            None
+
+    Returns:
+        str: Path to built file, or None if it was not produced
+    """
+    for target in make_targets:
+        print(f"- build target '{target}'")
+        makedir = srcdir
+        if make_path:
+            makedir = os.path.join(srcdir, make_path)
+        cmd = ['make', '-C', makedir, '-j', f'{multiprocessing.cpu_count()}',
+               target]
+        if make_flags:
+            cmd += make_flags
+        run_build(*cmd, env=run_env)
+
+    fname = os.path.join(srcdir, output_path)
+    if not os.path.exists(fname):
+        print(f"- File '{fname}' was not produced")
+        return None
+    return fname
+
+
+def get_repo_dir(workdir, git_repo):
+    """Get the directory in which to build from a git repository
+
+    The directory is named after the repository, with part of a hash of its
+    URL so that repositories with the same name do not clash.
+
+    Args:
+        workdir: Directory holding the builds
+        git_repo: URL of git repo
+
+    Returns:
+        str: Path to the directory, e.g. <workdir>/trusted-firmware-a-1234abcd
+    """
+    name = os.path.basename(git_repo.rstrip('/')).removesuffix('.git')
+    digest = hashlib.sha256(git_repo.encode('utf-8')).hexdigest()[:8]
+    return os.path.join(workdir, f'{name}-{digest}')
+
+
+def _checkout(repodir, git_repo, git_branch, run_env):
+    """Get a working tree for a version of a git repository
+
+    The repository is fetched into the 'src' subdirectory, with a working tree
+    for each branch or tag. An existing working tree is used as is, so that a
+    build can carry on from where it left off.
+
+    Args:
+        repodir: Directory for the repository, from get_repo_dir()
+        git_repo: URL of git repo
+        git_branch: Branch or tag to check out, or None for default
+        run_env: Environment to use for git, from build_env()
+
+    Returns:
+        str: Path to the working tree
+    """
+    ref = git_branch or 'HEAD'
+    tree = os.path.join(repodir, ref.replace('/', '_'))
+    if os.path.exists(tree):
+        print(f"- use existing tree '{tree}'")
+        return tree
+
+    srcdir = os.path.join(repodir, 'src')
+    if not os.path.exists(srcdir):
+        run_build('git', 'init', '-q', '--bare', srcdir, env=run_env)
+    print(f"- fetch '{ref}' from git repo '{git_repo}' to '{tree}'")
+    run_build('git', '-C', srcdir, 'fetch', '-q', '--depth', '1', git_repo,
+              ref, env=run_env)
+
+    # Drop any working tree which has been deleted, so it can be added again
+    run_build('git', '-C', srcdir, 'worktree', 'prune', env=run_env)
+    run_build('git', '-C', srcdir, 'worktree', 'add', '-q', '--detach', tree,
+              'FETCH_HEAD', env=run_env)
+    return tree
+
+
 def build_from_git(git_repo, make_targets, output_path, git_branch=None,
-                   env=None, make_flags=None, make_path=None):
+                   env=None, make_flags=None, make_path=None, workdir=None):
     """Build a file from a git repository
 
-    This clones the repo in a temporary directory, builds it with 'make',
-    then returns the filename of the resulting file.
+    This checks out the repo, builds it with 'make', then returns the filename
+    of the resulting file.
+
+    With a work directory, the repo is checked out there and kept, so that a
+    later build of the same version can reuse it, and a failed build can be
+    examined. Otherwise the repo is cloned into a temporary directory, which
+    the caller must remove.
 
     Args:
         git_repo: URL of git repo
@@ -99,39 +193,46 @@ def build_from_git(git_repo, make_targets, output_path, git_branch=None,
         make_flags: Additional flags to pass to make, or None
         make_path: Relative path inside git repo containing the Makefile,
             or None
+        workdir: Directory to build in, or None to use a temporary directory
 
     Returns:
         tuple:
             str: Path to built file
-            str: Temp directory to remove
+            str: Temp directory to remove, or None if there is none
         or None on error
     """
     run_env = build_env(env)
-    tmpdir = tempfile.mkdtemp(prefix='binmanb.')
-    print(f"- clone git repo '{git_repo}' to '{tmpdir}'")
-    if git_branch:
-        run_build('git', 'clone', '--depth', '1', '--branch', git_branch,
-                  git_repo, tmpdir, env=run_env)
-    else:
-        run_build('git', 'clone', '--depth', '1', git_repo, tmpdir,
-                  env=run_env)
+    if not workdir:
+        tmpdir = tempfile.mkdtemp(prefix='binmanb.')
+        print(f"- clone git repo '{git_repo}' to '{tmpdir}'")
+        if git_branch:
+            run_build('git', 'clone', '--depth', '1', '--branch', git_branch,
+                      git_repo, tmpdir, env=run_env)
+        else:
+            run_build('git', 'clone', '--depth', '1', git_repo, tmpdir,
+                      env=run_env)
+        fname = _make(tmpdir, make_targets, output_path, run_env, make_flags,
+                      make_path)
+        return (fname, tmpdir) if fname else None
 
-    for target in make_targets:
-        print(f"- build target '{target}'")
-        makedir = tmpdir
-        if make_path:
-            makedir = os.path.join(tmpdir, make_path)
-        cmd = ['make', '-C', makedir, '-j', f'{multiprocessing.cpu_count()}',
-               target]
-        if make_flags:
-            cmd += make_flags
-        run_build(*cmd, env=run_env)
+    # Git runs in the repository, so needs an absolute path to the tree
+    repodir = get_repo_dir(os.path.abspath(workdir), git_repo)
+    os.makedirs(repodir, exist_ok=True)
 
-    fname = os.path.join(tmpdir, output_path)
-    if not os.path.exists(fname):
-        print(f"- File '{fname}' was not produced")
+    # Only one build can use the repository at a time
+    with open(os.path.join(repodir, 'lock'), 'w', encoding='utf-8') as lockf:
+        fcntl.flock(lockf, fcntl.LOCK_EX)
+        tree = _checkout(repodir, git_repo, git_branch, run_env)
+        try:
+            fname = _make(tree, make_targets, output_path, run_env,
+                          make_flags, make_path)
+        except ValueError:
+            print(f"- build failed: see '{tree}'")
+            raise
+    if not fname:
+        print(f"- build left in '{tree}'")
         return None
-    return fname, tmpdir
+    return fname, None
 
 
 def fetch_from_url(url, make_executable=False):

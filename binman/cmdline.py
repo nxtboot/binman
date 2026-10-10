@@ -92,6 +92,9 @@ controlled by a description in the board device tree.'''
     parser.add_argument('--blob-dir', type=str,
         help='Set the directory to cache blobs in (default '
              '$BINMAN_BLOB_DIR or ~/.cache/binman/blobs)')
+    parser.add_argument('--blob-build-dir', type=str,
+        help='Set the directory to build blobs in (default '
+             '$BINMAN_BLOB_BUILD_DIR or ~/.cache/binman/blob-build)')
     parser.add_argument('-T', '--threads', type=int,
           default=None, help='Number of threads to use (0=single-thread)')
     parser.add_argument('--test-section-timeout', action='store_true',
@@ -227,5 +230,10 @@ controlled by a description in the board device tree.'''
                              help='Only try building from source')
     blob_parser.add_argument('--no-source', action='store_true',
                              help="Don't try building from source")
+    blob_parser.add_argument('--temp-build', action='store_true',
+                             help='Build in a temporary directory which is '
+                                  'removed afterwards')
+    blob_parser.add_argument('--clean-builds', action='store_true',
+                             help='Remove all blob builds')
 
     return parser.parse_args(argv)

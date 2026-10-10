@@ -9154,12 +9154,12 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
                 tools.write_file(os.path.join(output_dir, 'bl31.bin'), b'bl31')
             return command.CommandResult()
 
-        # Use a private tool directory, so the blob is not cached in the
-        # user's one
+        # Use a private blob directory, so the blob is not cached in the
+        # user's one, and build in a temporary directory
         blob_dir = os.path.join(self._indir, 'blobs')
         args = ['--blob-dir', blob_dir, 'blob', '--fetch',
                 'arm,trusted-firmware-a', '--version', '2.9', '--arch',
-                'aarch64', '--plat', 'sun50i_a64']
+                'aarch64', '--plat', 'sun50i_a64', '--temp-build']
         try:
             command.TEST_RESULT = handle_command
             with terminal.capture() as (stdout, _):
@@ -9310,6 +9310,16 @@ fdt         fdtmap                Extract the devicetree blob from the fdtmap
         self.assertEqual(b'test blob data', tools.read_file(os.path.join(
             blob_dir, 'test,added', '1.0', 'aarch64', 'generic',
             'blob_add_test.bin')))
+
+    def testBlobCleanBuilds(self):
+        """Test removing the blob builds"""
+        build_dir = os.path.join(self._indir, 'blob-build')
+        os.makedirs(os.path.join(build_dir, 'repo-1234abcd'))
+        with terminal.capture() as (stdout, _):
+            self._DoBinman('--blob-build-dir', build_dir, 'blob',
+                           '--clean-builds')
+        self.assertIn(f"Removed '{build_dir}'", stdout.getvalue())
+        self.assertFalse(os.path.exists(build_dir))
 
 if __name__ == "__main__":
     unittest.main()

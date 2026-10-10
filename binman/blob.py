@@ -26,6 +26,9 @@ modules = {}
 # Environment variable giving the directory to cache blobs in
 BLOB_DIR_ENV = 'BINMAN_BLOB_DIR'
 
+# Environment variable giving the directory to build blobs in
+BUILD_DIR_ENV = 'BINMAN_BLOB_BUILD_DIR'
+
 # Priorities for different fetch sources
 PRIORITY_BUILD = 10    # Building from source (highest priority - open source)
 PRIORITY_LOCAL = 20    # Local directories
@@ -60,6 +63,20 @@ def get_blob_dir(option=None):
     return option or os.environ.get(BLOB_DIR_ENV) or user_cache_dir('blobs')
 
 
+def get_build_dir(option=None):
+    """Get the directory to build blobs in
+
+    Args:
+        option (str): Directory given by the user (--blob-build-dir), or None
+
+    Returns:
+        str: The directory: the option if given, else $BINMAN_BLOB_BUILD_DIR,
+            else ~/.cache/binman/blob-build
+    """
+    return (option or os.environ.get(BUILD_DIR_ENV) or
+            user_cache_dir('blob-build'))
+
+
 class Blob:
     """Handler for firmware blobs that can be fetched or built
 
@@ -72,6 +89,9 @@ class Blob:
     """
     # Directory to store blobs. Must be set by set_blob_dir() before use.
     blobdir = ''
+
+    # Directory to build blobs in, or None to build in a temporary directory
+    build_dir = None
 
     def __init__(self, compatible, desc):
         """Create a new Blob handler
@@ -132,6 +152,25 @@ class Blob:
     def set_blob_dir(cls, pathname):
         """Set the path to use to store and find blobs"""
         cls.blobdir = pathname
+
+    @classmethod
+    def set_build_dir(cls, pathname):
+        """Set the path to build blobs in
+
+        Args:
+            pathname (str): Directory to build in, or None to build in a
+                temporary directory which is removed afterwards
+        """
+        cls.build_dir = pathname
+
+    @classmethod
+    def clean_builds(cls):
+        """Remove the directory used to build blobs, with all its builds"""
+        if cls.build_dir and os.path.exists(cls.build_dir):
+            shutil.rmtree(cls.build_dir)
+            print(f"Removed '{cls.build_dir}'")
+        else:
+            print('No blob builds to remove')
 
     @staticmethod
     def get_blob_list(include_testing=False):
@@ -323,8 +362,9 @@ class Blob:
                        env=None, make_flags=None):
         """Build a blob from a git repository
 
-        This clones the repo in a temporary directory, builds it with 'make',
-        then returns the filename of the resulting blob.
+        This checks out the repo in the build directory (see
+        set_build_dir()), builds it with 'make', then returns the filename of
+        the resulting blob.
 
         Args:
             git_repo: URL of git repo
@@ -337,12 +377,12 @@ class Blob:
         Returns:
             tuple:
                 str: Path to built file
-                str: Temp directory to remove
+                str: Temp directory to remove, or None if there is none
             or None on error
         """
         return fetchbase.build_from_git(
             git_repo, make_targets, output_path, git_branch=git_branch,
-            env=env, make_flags=make_flags)
+            env=env, make_flags=make_flags, workdir=cls.build_dir)
 
     @classmethod
     def fetch_from_url(cls, url):
