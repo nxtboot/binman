@@ -8,6 +8,27 @@ the project follows `Semantic Versioning <https://semver.org/>`_.
 Unreleased
 ----------
 
+Added
+~~~~~
+- ``binman blob`` fetches firmware blobs, such as the BL31 image from ARM
+  Trusted Firmware, preferring to build them from source. Fetched blobs are
+  cached in ``~/.cache/binman/blobs``, which can be changed with
+  ``--blob-dir`` or ``BINMAN_BLOB_DIR``. See 'Fetching firmware blobs' in the
+  documentation.
+- Blobs are built in ``~/.cache/binman/blob-build``, which is kept so that a
+  later build of the same version is faster and a failed build can be
+  examined. This can be changed with ``--blob-build-dir`` or
+  ``BINMAN_BLOB_BUILD_DIR``. Use ``binman blob --temp-build`` to build in a
+  temporary directory instead, or ``binman blob --clean-builds`` to remove the
+  builds.
+- Building an image fetches any external blobs it needs which are not in the
+  input directories, from blob types which provide them for the board. These
+  are matched by the compatible strings of the devicetree root node, so a
+  board's own blobs take precedence over those shared by its SoC. Blob stores
+  and blob types, such as a private server holding a board's blobs, can be set
+  up in ``~/.config/binman/blobstores.yaml`` or in files listed in
+  ``BINMAN_BLOBSTORES``
+
 0.1.1 - 2026-10-04
 ------------------
 

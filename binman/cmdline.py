@@ -89,6 +89,12 @@ controlled by a description in the board device tree.'''
         help='Set the directory to store tools')
     parser.add_argument('--toolpath', type=str, action='append',
         help='Add a path to the list of directories containing tools')
+    parser.add_argument('--blob-dir', type=str,
+        help='Set the directory to cache blobs in (default '
+             '$BINMAN_BLOB_DIR or ~/.cache/binman/blobs)')
+    parser.add_argument('--blob-build-dir', type=str,
+        help='Set the directory to build blobs in (default '
+             '$BINMAN_BLOB_BUILD_DIR or ~/.cache/binman/blob-build)')
     parser.add_argument('-T', '--threads', type=int,
           default=None, help='Number of threads to use (0=single-thread)')
     parser.add_argument('--test-section-timeout', action='store_true',
@@ -200,5 +206,34 @@ controlled by a description in the board device tree.'''
         '-f', '--fetch', action='store_true',
         help='fetch a bintool from a known location (or: all/missing)')
     tool_parser.add_argument('bintools', type=str, nargs='*')
+
+    blob_parser = subparsers.add_parser('blob', help='Manage firmware blobs')
+    blob_parser.add_argument('-l', '--list', action='store_true',
+                             help='List all known blob types')
+    blob_parser.add_argument('--list-stores', action='store_true',
+                             help='List all configured blob stores')
+    blob_parser.add_argument('--info', type=str, metavar='COMPATIBLE',
+                             help='Show info about a specific blob type')
+    blob_parser.add_argument('-f', '--fetch', type=str, metavar='COMPATIBLE',
+                             help='Fetch a blob by compatible string')
+    blob_parser.add_argument('--add', type=str, metavar='COMPATIBLE',
+                             help='Add a blob file to the cache')
+    blob_parser.add_argument('--file', type=str,
+                             help='Input file path (for --add)')
+    blob_parser.add_argument('--version', type=str,
+                             help='Version string for the blob')
+    blob_parser.add_argument('--arch', type=str,
+                             help='Target architecture (e.g. aarch64)')
+    blob_parser.add_argument('--plat', type=str,
+                             help='Target platform (e.g. sun50i_a64)')
+    blob_parser.add_argument('--source-only', action='store_true',
+                             help='Only try building from source')
+    blob_parser.add_argument('--no-source', action='store_true',
+                             help="Don't try building from source")
+    blob_parser.add_argument('--temp-build', action='store_true',
+                             help='Build in a temporary directory which is '
+                                  'removed afterwards')
+    blob_parser.add_argument('--clean-builds', action='store_true',
+                             help='Remove all blob builds')
 
     return parser.parse_args(argv)
