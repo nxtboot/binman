@@ -17,6 +17,7 @@ import multiprocessing
 import os
 import tempfile
 
+from u_boot_pylib import command
 from u_boot_pylib import tools
 
 BINMAN_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -32,6 +33,54 @@ FETCH_NAMES = {
 
 # Status of fetching
 FETCHED, FAIL, PRESENT, STATUS_COUNT = range(4)
+
+# Environment variables which tell git which repository to use, as listed by
+# 'git rev-parse --local-env-vars'. Git sets these when it runs a hook or a
+# 'git rebase --exec' command, so a build started from there would otherwise
+# use that repository instead of the one being built
+GIT_LOCAL_ENV = (
+    'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS',
+    'GIT_CONFIG_COUNT', 'GIT_OBJECT_DIRECTORY', 'GIT_DIR', 'GIT_WORK_TREE',
+    'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE', 'GIT_INDEX_FILE',
+    'GIT_NO_REPLACE_OBJECTS', 'GIT_REPLACE_REF_BASE', 'GIT_PREFIX',
+    'GIT_SHALLOW_FILE', 'GIT_COMMON_DIR')
+
+
+def build_env(env=None):
+    """Get the environment to use when building from a git repository
+
+    Args:
+        env: Environment variables to add, or None
+
+    Returns:
+        dict: The environment, without the variables in GIT_LOCAL_ENV
+    """
+    base = tools.get_env_with_path() or os.environ
+    run_env = {key: val for key, val in base.items()
+               if key not in GIT_LOCAL_ENV}
+    run_env.update(env or {})
+    return run_env
+
+
+def run_build(*args, env):
+    """Run a command to build from source
+
+    This uses command.run_one() since tools.run() does not support setting the
+    environment
+
+    Args:
+        args: Command and its arguments
+        env (dict): Environment to use, from build_env()
+
+    Raises:
+        ValueError: The command failed
+    """
+    result = command.run_one(*args, capture=True, capture_stderr=True,
+                             env=env, raise_on_error=False)
+    if result.return_code:
+        raise ValueError(f"Error {result.return_code} running "
+                         f"'{' '.join(args)}': "
+                         f"{result.stderr or result.stdout}")
 
 
 def build_from_git(git_repo, make_targets, output_path, git_branch=None,
@@ -57,13 +106,15 @@ def build_from_git(git_repo, make_targets, output_path, git_branch=None,
             str: Temp directory to remove
         or None on error
     """
+    run_env = build_env(env)
     tmpdir = tempfile.mkdtemp(prefix='binmanb.')
     print(f"- clone git repo '{git_repo}' to '{tmpdir}'")
     if git_branch:
-        tools.run('git', 'clone', '--depth', '1', '--branch', git_branch,
-                  git_repo, tmpdir)
+        run_build('git', 'clone', '--depth', '1', '--branch', git_branch,
+                  git_repo, tmpdir, env=run_env)
     else:
-        tools.run('git', 'clone', '--depth', '1', git_repo, tmpdir)
+        run_build('git', 'clone', '--depth', '1', git_repo, tmpdir,
+                  env=run_env)
 
     for target in make_targets:
         print(f"- build target '{target}'")
@@ -74,14 +125,7 @@ def build_from_git(git_repo, make_targets, output_path, git_branch=None,
                target]
         if make_flags:
             cmd += make_flags
-
-        # Set up environment if custom env vars are needed
-        if env:
-            run_env = os.environ.copy()
-            run_env.update(env)
-            tools.run(*cmd, env=run_env)
-        else:
-            tools.run(*cmd)
+        run_build(*cmd, env=run_env)
 
     fname = os.path.join(tmpdir, output_path)
     if not os.path.exists(fname):

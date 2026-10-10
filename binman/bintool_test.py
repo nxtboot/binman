@@ -14,6 +14,7 @@ import unittest.mock
 import urllib.error
 
 from binman import bintool
+from binman import fetchbase
 from binman.bintool import Bintool
 
 from u_boot_pylib import command
@@ -241,7 +242,7 @@ class TestBintool(unittest.TestCase):
                 str: Filename of written file (or missing 'make' output)
                 str: Contents of stdout
         """
-        def fake_run(*cmd):
+        def fake_run(*cmd, **_kwargs):
             if cmd[0] == 'make':
                 # See Bintool.build_from_git()
                 tmpdir = cmd[2]
@@ -254,7 +255,8 @@ class TestBintool(unittest.TestCase):
         self.fname = None
         with unittest.mock.patch.object(bintool.Bintool, 'tooldir',
                                         self._indir):
-            with unittest.mock.patch.object(tools, 'run', side_effect=fake_run):
+            with unittest.mock.patch.object(fetchbase, 'run_build',
+                                            side_effect=fake_run):
                 with terminal.capture() as (stdout, _):
                     btest.fetch_tool(bintool.FETCH_BUILD, col, False)
         fname = os.path.join(self._indir, '_testing')
@@ -298,7 +300,7 @@ class TestBintool(unittest.TestCase):
             tools.write_file(fname, expected)
             return fname, dirname
 
-        def fake_run(*cmd):
+        def fake_run(*cmd, **_kwargs):
             if cmd[0] == 'make':
                 # See Bintool.build_from_git()
                 tmpdir = cmd[2]
@@ -311,7 +313,9 @@ class TestBintool(unittest.TestCase):
         os.mkdir(dirname)
         fname = os.path.join(dirname, 'downloaded')
 
-        with unittest.mock.patch.object(tools, 'run', side_effect=fake_run):
+        with unittest.mock.patch.object(tools, 'run', side_effect=fake_run), \
+                unittest.mock.patch.object(fetchbase, 'run_build',
+                                           side_effect=fake_run):
             with unittest.mock.patch.object(tools, 'download',
                                             side_effect=handle_download):
                 with terminal.capture() as _:

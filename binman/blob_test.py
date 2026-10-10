@@ -15,6 +15,7 @@ import unittest.mock
 
 from binman import blob
 from binman import blobstore
+from binman import fetchbase
 from binman.blob import Blob
 
 from u_boot_pylib import command
@@ -538,6 +539,37 @@ class TestBlobFunctional(unittest.TestCase):
             shutil.rmtree(tmpdir)
         finally:
             command.TEST_RESULT = None
+
+    def test_build_from_git_env(self):
+        """Test that build_from_git() ignores the caller's git repository"""
+        with unittest.mock.patch.dict(os.environ, {'GIT_DIR': '/outer',
+                                                   'HOME_TEST': 'home'}):
+            with unittest.mock.patch.object(fetchbase, 'run_build') as run:
+                with terminal.capture():
+                    Blob.build_from_git('https://example.com/repo.git',
+                                        ['all'], 'output.bin',
+                                        env={'CROSS_COMPILE': 'cc-'})
+        self.assertEqual(2, run.call_count)
+        for call in run.call_args_list:
+            run_env = call.kwargs['env']
+            self.assertNotIn('GIT_DIR', run_env)
+            self.assertEqual('home', run_env['HOME_TEST'])
+        self.assertEqual('cc-', run.call_args.kwargs['env']['CROSS_COMPILE'])
+
+    def test_build_from_git_fails(self):
+        """Test build_from_git when a command fails"""
+        try:
+            command.TEST_RESULT = command.CommandResult(return_code=128,
+                                                        stderr='no repo')
+            with terminal.capture():
+                with self.assertRaises(ValueError) as exc:
+                    Blob.build_from_git('https://example.com/repo.git',
+                                        ['all'], 'output.bin')
+        finally:
+            command.TEST_RESULT = None
+        self.assertIn("Error 128 running 'git clone --depth 1 "
+                      "https://example.com/repo.git", str(exc.exception))
+        self.assertIn('no repo', str(exc.exception))
 
     def test_build_from_git_no_output(self):
         """Test build_from_git when output file is not produced"""
