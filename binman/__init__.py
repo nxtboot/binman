@@ -2,11 +2,10 @@
 
 """Binman firmware packager
 
-binman bundles copies of U-Boot's u_boot_pylib library and dtoc's devicetree
-modules in _vendor/. Make these importable by their usual names, ahead of any
-other copies, e.g. in a U-Boot tree. They are kept out of the top level of
-site-packages, where they would clash with U-Boot's tools and with the
-separate u_boot_pylib and dtoc packages.
+binman bundles a copy of dtoc's devicetree modules in _vendor/. Make these
+importable by their usual name, ahead of any other copies, e.g. in a U-Boot
+tree. They are kept out of the top level of site-packages, where they would
+clash with U-Boot's tools and with the separate dtoc package.
 """
 
 import os

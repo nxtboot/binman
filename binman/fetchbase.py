@@ -19,7 +19,6 @@ import multiprocessing
 import os
 import tempfile
 
-from u_boot_pylib import command
 from u_boot_pylib import tools
 
 BINMAN_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -57,8 +56,7 @@ def build_env(env=None):
     Returns:
         dict: The environment, without the variables in GIT_LOCAL_ENV
     """
-    base = tools.get_env_with_path() or os.environ
-    run_env = {key: val for key, val in base.items()
+    run_env = {key: val for key, val in os.environ.items()
                if key not in GIT_LOCAL_ENV}
     run_env.update(env or {})
     return run_env
@@ -67,22 +65,15 @@ def build_env(env=None):
 def run_build(*args, env):
     """Run a command to build from source
 
-    This uses command.run_one() since tools.run() does not support setting the
-    environment
-
     Args:
         args: Command and its arguments
-        env (dict): Environment to use, from build_env()
+        env (dict): Environment to use, from build_env(). Any tool paths are
+            added to its PATH
 
     Raises:
         ValueError: The command failed
     """
-    result = command.run_one(*args, capture=True, capture_stderr=True,
-                             env=env, raise_on_error=False)
-    if result.return_code:
-        raise ValueError(f"Error {result.return_code} running "
-                         f"'{' '.join(args)}': "
-                         f"{result.stderr or result.stdout}")
+    tools.run(*args, env=env)
 
 
 def _make(srcdir, make_targets, output_path, run_env, make_flags, make_path):
