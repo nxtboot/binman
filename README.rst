@@ -90,5 +90,6 @@ since the expected output tracks its development; pass ``--toolpath`` to point
 binman at a U-Boot ``tools/`` build directory. ``binman test -T`` checks that
 the tests cover all of the code.
 
-The ``u_boot_pylib`` and ``dtoc`` libraries are vendored from the U-Boot tree,
-so no surrounding U-Boot source is required.
+The ``dtoc`` library is vendored from the U-Boot tree and ``u_boot_pylib`` is
+installed from PyPI as ``u-boot-pylib``, so no surrounding U-Boot source is
+required.

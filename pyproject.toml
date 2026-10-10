@@ -29,6 +29,7 @@ dependencies = [
     "jsonschema",
     "PyYAML",
     "yamllint",
+    "u-boot-pylib >= 0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -46,7 +47,7 @@ binman = "binman.main:start_binman"
 
 [tool.setuptools.packages.find]
 # binman.test and its subdirs hold the test data, found as namespace packages.
-# binman._vendor holds the vendored libraries (see binman/__init__.py)
+# binman._vendor holds the vendored dtoc library (see binman/__init__.py)
 include = ["binman*"]
 
 [tool.setuptools.package-data]

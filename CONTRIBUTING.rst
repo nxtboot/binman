@@ -68,19 +68,20 @@ Vendored code
 Some code is copied from the U-Boot tree, so that the project is
 self-contained:
 
-- ``binman/_vendor/u_boot_pylib/``: the U-Boot Python library
 - ``binman/_vendor/dtoc/``: the ``fdt`` and ``fdt_util`` devicetree modules
   from dtoc
 - ``binman/test/include/``: the headers used by the ELF test programs
   (``linux/build_bug.h`` is a minimal stand-in)
 - ``doc/binman_docs.py`` and ``doc/binman_tests.rst``
 
-The vendored libraries live inside the ``binman`` package, rather than at the
-top level, so that installing binman does not clash with U-Boot's own copies
-or with the separate ``u_boot_pylib`` and ``dtoc`` packages.
-``binman/__init__.py`` adds ``binman/_vendor/`` to the start of the import
-path, so the code still imports them by their usual names and matches the
-U-Boot tree.
+The vendored library lives inside the ``binman`` package, rather than at the
+top level, so that installing binman does not clash with U-Boot's own copy or
+with the separate ``dtoc`` package. ``binman/__init__.py`` adds
+``binman/_vendor/`` to the start of the import path, so the code still imports
+it by its usual name and matches the U-Boot tree.
+
+The U-Boot Python library is not vendored: it is a dependency, from the
+``u-boot-pylib`` package (https://github.com/nxtboot/u-boot-pylib).
 
 When refreshing these from U-Boot, note the U-Boot commit in the commit
 message.
