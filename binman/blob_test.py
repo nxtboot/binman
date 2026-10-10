@@ -332,6 +332,21 @@ class TestBlobFunctional(unittest.TestCase):
             [call[1]['env']['CROSS_COMPILE']
              for call in mock_build.call_args_list])
 
+    def test_atf_handler_elf(self):
+        """Test that the ATF handler uses the ELF file where needed"""
+        from binman.blobs.atf import Blobatf
+
+        handler = Blobatf('arm,trusted-firmware-a')
+        with unittest.mock.patch.object(handler, 'build_from_git',
+                                        return_value=None) as mock_build:
+            with terminal.capture():
+                handler.build('2.9', 'aarch64', 'rk3566')
+                handler.build('2.9', 'aarch64', 'sun50i_h6')
+        self.assertEqual(
+            ['build/rk3568/release/bl31/bl31.elf',
+             'build/sun50i_h6/release/bl31.bin'],
+            [call[1]['output_path'] for call in mock_build.call_args_list])
+
     def test_atf_handler_version_formats(self):
         """Test ATF handler handles different version formats"""
         from binman.blobs.atf import Blobatf

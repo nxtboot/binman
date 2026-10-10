@@ -33,6 +33,11 @@ PLATFORM_CONFIG = {
     'generic': ('fvp', []),
 }
 
+# PLAT values for which TF-A does not produce a binary (it sets
+# DISABLE_BIN_GENERATION), so the BL31 ELF file is used instead. U-Boot uses
+# the ELF file on these platforms anyway
+ELF_PLATFORMS = {'rk3328', 'rk3368', 'rk3399', 'rk3568', 'rk3588'}
+
 # Git repository for TF-A
 TF_A_REPO = 'https://github.com/ARM-software/arm-trusted-firmware.git'
 
@@ -56,7 +61,8 @@ class Blobatf(blob.Blob):
             plat: Target platform (e.g. 'sun50i_a64', 'rk3399')
 
         Returns:
-            tuple: (path to bl31.bin, temp directory) or None on failure
+            tuple: (path to bl31.bin, or bl31.elf for some platforms, temp
+                directory) or None on failure
         """
         if arch != 'aarch64':
             print(f"- TF-A only supports aarch64, not '{arch}'")
@@ -90,7 +96,10 @@ class Blobatf(blob.Blob):
         ] + extra_flags
 
         # Output path for BL31
-        output_path = f'build/{tf_plat}/release/bl31.bin'
+        if tf_plat in ELF_PLATFORMS:
+            output_path = f'build/{tf_plat}/release/bl31/bl31.elf'
+        else:
+            output_path = f'build/{tf_plat}/release/bl31.bin'
 
         print(f"- Building TF-A {git_branch} for {tf_plat}")
         # Build just BL31, since other images, such as the Cortex-M0 firmware

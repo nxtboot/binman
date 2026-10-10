@@ -1692,7 +1692,10 @@ remove all the builds::
 Fetched blobs are cached in ``~/.cache/binman/blobs``, under the compatible
 string, version, architecture and platform, e.g.::
 
-    ~/.cache/binman/blobs/arm,trusted-firmware-a/2.12/aarch64/rk3399/bl31.bin
+    ~/.cache/binman/blobs/arm,trusted-firmware-a/2.12/aarch64/sun50i_a64/bl31.bin
+
+For TF-A, this is the ELF file ``bl31.elf`` on Rockchip platforms, since TF-A
+does not produce ``bl31.bin`` for them.
 
 If ``XDG_CACHE_HOME`` is set, the cache is in ``$XDG_CACHE_HOME/binman/blobs``
 instead. Use the ``--blob-dir`` option or the ``BINMAN_BLOB_DIR`` environment
@@ -1702,7 +1705,7 @@ several users or kept between CI runs.
 To put a blob which you have obtained some other way into the cache, use::
 
     binman blob --add arm,trusted-firmware-a --file bl31.bin --version 2.12 \
-        --arch aarch64 --plat rk3399
+        --arch aarch64 --plat sun50i_a64
 
 Building an image also uses blobs. When an image needs an external blob which
 is not in the input directories (see `External blobs`_), binman looks for a
